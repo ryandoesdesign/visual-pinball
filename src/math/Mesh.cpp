@@ -30,55 +30,6 @@ bool Mesh::LoadAnimation(const char *fname, const bool flipTV, const bool conver
       ShowError("Can't find sequence of obj files! The file name of the sequence must be <meshname>_x.obj where x is the frame number!");
       return false;
    }
-#ifndef __STANDALONE__
-   idx++;
-   name.erase(idx);
-   string sname = name + "*.obj";
-   WIN32_FIND_DATA data;
-   const HANDLE h = FindFirstFile(sname.c_str(), &data);
-   vector<string> allFiles;
-   int frameCounter = 0;
-   if (h != INVALID_HANDLE_VALUE)
-   {
-      do
-      {
-         allFiles.push_back(data.cFileName);
-         frameCounter++;
-      } while (FindNextFile(h, &data));
-   }
-   m_animationFrames.resize(frameCounter);
-   for (size_t i = 0; i < allFiles.size(); i++)
-   {
-      sname = allFiles[i];
-      ObjLoader loader;
-      if (loader.Load(sname, flipTV, convertToLeftHanded))
-      {
-         const vector<Vertex3D_NoTex2>& verts = loader.GetVertices();
-         const vector<unsigned int>& indices = loader.GetIndices();
-         if ((m_indices.size() != indices.size()) || (m_vertices.size() != verts.size()) || (memcmp(m_indices.data(), indices.data(), indices.size()*sizeof(unsigned int)) != 0))
-         {
-            ShowError("Error: frames of animation do not share the same data layout.");
-            return false;
-         }
-         for (size_t t = 0; t < verts.size(); t++)
-         {
-            VertData vd;
-            vd.x = verts[t].x; vd.y = verts[t].y; vd.z = verts[t].z;
-            vd.nx = verts[t].nx; vd.ny = verts[t].ny; vd.nz = verts[t].nz;
-            m_animationFrames[i].m_frameVerts.push_back(vd);
-         }
-      }
-      else
-      {
-         name = "Unable to load file " + sname;
-         ShowError(name);
-         return false;
-      }
-
-   }
-   sname = std::to_string(frameCounter)+" frames imported!";
-   g_pvp->MessageBox(sname.c_str(), "Info", MB_OK | MB_ICONEXCLAMATION);
-#endif
    return true;
 }
 

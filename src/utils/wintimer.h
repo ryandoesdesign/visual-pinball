@@ -2,9 +2,7 @@
 
 #pragma once
 
-#ifdef __STANDALONE__
 #include <climits>
-#endif
 #include <thread>
 #include <iomanip>
 

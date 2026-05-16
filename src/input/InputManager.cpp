@@ -743,11 +743,7 @@ void InputManager::CreateInputActions()
                CComVariant rgvar[1] = { CComVariant(0x10000 | static_cast<int>(action.GetActionId())) };
                DISPPARAMS dispparams = { rgvar, nullptr, 1, 0 };
                m_player->m_ptable->FireDispID(isPressed ? DISPID_GameEvents_KeyDown : DISPID_GameEvents_KeyUp, &dispparams);
-#ifdef __STANDALONE__
                m_player->SetCloseState(Player::CS_CLOSE_APP);
-#else
-               m_player->SetCloseState(Player::CS_STOP_PLAY);
-#endif
             }
          }))->GetActionId();
 
@@ -939,21 +935,6 @@ bool InputManager::IsPressed(int actionId) const
 
 int InputManager::GetWindowVirtualKeyForAction(unsigned int actionId) const
 {
-   #ifndef __STANDALONE__
-      // Very basic and inefficient way of searching for a keyboard mapping, but this is only used once to detect table mirroring
-      assert(0 <= (int)actionId && actionId < static_cast<unsigned int>(m_inputActions.size()));
-      vector<ButtonMapping> mapping;
-      for (unsigned char vk = VK_ESCAPE; vk <= VK_OEM_3; vk++)
-      {
-         SDL_Scancode scancode = GetSDLScancodeFromWin32VirtualKey(vk);
-         if (scancode == SDL_SCANCODE_UNKNOWN)
-            continue;
-         mapping.clear();
-         mapping.emplace_back(nullptr, nullptr, m_keyboardDeviceId, static_cast<uint16_t>(scancode));
-         if (m_inputActions[actionId]->HasMapping(mapping))
-            return vk;
-      }
-   #endif
    return 0;
 }
 

@@ -6,9 +6,7 @@
 #include <mutex>
 static std::mutex mtx; //!! only used for Wine multithreading bug workaround
 
-#ifdef __STANDALONE__
 #include <fstream>
-#endif
 
 BiffWriter::BiffWriter(IStream *pistream, const HCRYPTHASH hcrypthash)
    : m_pistream(pistream)
@@ -23,10 +21,6 @@ void BiffWriter::WriteRecordSize(const int size)
    m_hasError |= FAILED(m_pistream->Write(&size, sizeof(int32_t), &written));
    m_hasError |= written != sizeof(int32_t);
 
-#ifndef __STANDALONE__
-   if (m_hcrypthash && !m_subObjectRecordSizePos.empty() && m_subObjectRecordSizePos.back().QuadPart >= 0)
-      CryptHashData(m_hcrypthash, (BYTE *)&size, sizeof(int32_t), 0);
-#endif
 }
 
 void BiffWriter::WriteBytes(const void *pv, const ULONG count)
@@ -35,10 +29,6 @@ void BiffWriter::WriteBytes(const void *pv, const ULONG count)
    m_hasError |= FAILED(m_pistream->Write(pv, count, &written));
    m_hasError |= written != count;
 
-#ifndef __STANDALONE__
-   if (m_hcrypthash)
-      CryptHashData(m_hcrypthash, (BYTE *)pv, count, 0);
-#endif
 }
 
 void BiffWriter::BeginObject(const int objectId, bool isArray, bool isSkippable)
@@ -157,9 +147,6 @@ void BiffWriter::WriteScript(int fieldId, const string &value)
    const int32_t nBytes = (int32_t)value.size();
    m_hasError |= FAILED(m_pistream->Write(&nBytes, static_cast<ULONG>(sizeof(int32_t)), &writ));
    m_hasError |= FAILED(m_pistream->Write(value.c_str(), static_cast<ULONG>(nBytes), &writ));
-#ifndef __STANDALONE__
-   CryptHashData(m_hcrypthash, (const BYTE*)(value.c_str()), static_cast<DWORD>(nBytes), 0);
-#endif
 }
 
 void BiffWriter::WriteRaw(const int id, const void *pvalue, const int size)

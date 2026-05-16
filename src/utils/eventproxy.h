@@ -63,19 +63,9 @@ public:
          Collection * const pcollection = pT->m_vEventCollection[i];
          if (pcollection!=nullptr)
          {
-            #ifndef __STANDALONE__
-               CComVariant rgvar[1] = { CComVariant((long)pT->m_viEventCollection[i]) };
-               DISPPARAMS dispparams = { rgvar, nullptr, 1, 0 };
-               #ifndef __clang__
-               pcollection->FireDispID(dispid, &dispparams);
-               #else
-               ((EventProxyBase*)pcollection)->FireDispID(dispid, &dispparams);
-               #endif
-            #else
                CComVariant rgvar[1] = { CComVariant(pT->m_viEventCollection[i]) };
                DISPPARAMS dispparams = { rgvar, nullptr, 1, 0 };
                ((EventProxyBase*)pcollection)->FireDispID(dispid, &dispparams);
-            #endif
          }
       }
       if (pT->m_singleEvents)
@@ -83,11 +73,7 @@ public:
    }
 
    HRESULT FireDispID(const DISPID dispid, DISPPARAMS * const pdispparams)
-   #ifdef __STANDALONE__
    override
-   #else
-   final
-   #endif
    {
       if (dispid != DISPID_TimerEvents_Timer)
          g_frameProfiler->EnterScriptSection(dispid, string());

@@ -17,58 +17,6 @@ struct FontDesc
    bool IsUnderline() const { return (attributes & 0x04) != 0; }
    bool IsStrikeThrough() const { return (attributes & 0x08) != 0; }
 
-#ifndef __STANDALONE__
-   FONTDESC ToOLEFontDesc() const
-   {
-      FONTDESC fd;
-      fd.cbSizeofstruct = sizeof(FONTDESC);
-      fd.lpstrName = MakeWide(name);
-      fd.cySize.Hi = 0;
-      fd.cySize.Lo = size;
-      fd.sWeight = weight;
-      fd.sCharset = charset;
-      fd.fItalic = (attributes & 0x02) ? TRUE : FALSE;
-      fd.fUnderline = (attributes & 0x04) ? TRUE : FALSE;
-      fd.fStrikethrough = (attributes & 0x08) ? TRUE : FALSE;
-      return fd;
-   }
-
-   LOGFONT ToLogFont() const
-   {
-      LOGFONT lf = {};
-      FONTDESC const oleFD = ToOLEFontDesc();
-      IFont *pIFont = nullptr;
-      OleCreateFontIndirect(const_cast<FONTDESC*>(&oleFD), IID_IFont, (void **)&pIFont);
-      if (pIFont)
-      {
-         HFONT hFont;
-         pIFont->get_hFont(&hFont);
-         GetObject(hFont, sizeof(LOGFONT), &lf);
-         pIFont->Release();
-      }
-      delete[] oleFD.lpstrName;
-      return lf;
-   }
-
-   void FromOLEFont(IFont *pIFont)
-   {
-      FONTDESC fd;
-      fd.cbSizeofstruct = sizeof(FONTDESC);
-      pIFont->get_Name((BSTR *)&fd.lpstrName);
-      pIFont->get_Size(&fd.cySize);
-      pIFont->get_Weight(&fd.sWeight);
-      pIFont->get_Charset(&fd.sCharset);
-      pIFont->get_Italic(&fd.fItalic);
-      pIFont->get_Underline(&fd.fUnderline);
-      pIFont->get_Strikethrough(&fd.fStrikethrough);
-      name = MakeString((BSTR)fd.lpstrName);
-      size = fd.cySize.Lo;
-      weight = fd.sWeight;
-      charset = fd.sCharset;
-      attributes = (fd.fItalic ? 0x02 : 0x00) | (fd.fUnderline ? 0x04 : 0x00) | (fd.fStrikethrough ? 0x08 : 0x00);
-      SysFreeString((BSTR)fd.lpstrName);
-   }
-#endif
 };
 
 class IObjectReader

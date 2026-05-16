@@ -9,7 +9,6 @@
 #include <plog/Init.h>
 #include <plog/Formatters/TxtFormatter.h>
 #include <plog/Appenders/RollingFileAppender.h>
-#ifdef __STANDALONE__
 #ifndef __ANDROID__
 #include <plog/Appenders/ColorConsoleAppender.h>
 #else
@@ -17,7 +16,6 @@
 #endif
 #ifdef __LIBVPINBALL__
 #include "lib/src/WebServer.h"
-#endif
 #endif
 
 #include "ui/win/codeview.h"
@@ -174,7 +172,6 @@ void Logger::SetupLogger(const bool enable)
          plog::Logger<PLOG_DEFAULT_INSTANCE_ID>::getInstance()->addAppender(&fileAppender);
          plog::Logger<PLOG_NO_DBG_OUT_INSTANCE_ID>::getInstance()->addAppender(&fileAppender);
 
-#ifdef __STANDALONE__
 #ifndef __ANDROID__
          static plog::ColorConsoleAppender<plog::TxtFormatter> consoleAppender;
          plog::Logger<PLOG_DEFAULT_INSTANCE_ID>::getInstance()->addAppender(&consoleAppender);
@@ -189,7 +186,6 @@ void Logger::SetupLogger(const bool enable)
          plog::Logger<PLOG_DEFAULT_INSTANCE_ID>::getInstance()->addAppender(&webServerAppender);
          plog::Logger<PLOG_NO_DBG_OUT_INSTANCE_ID>::getInstance()->addAppender(&webServerAppender);
 #endif  
-#endif
       }
       #ifdef _DEBUG
       maxLogSeverity = plog::debug;

@@ -29,39 +29,9 @@ static HMODULE hNtDll = nullptr;
 static ULONG win_timer_old_period = -1;
 #endif
 
-#ifndef __STANDALONE__
-static TIMECAPS win_timer_caps;
-static MMRESULT win_timer_result = TIMERR_NOCANDO;
-#endif
 
 void set_lowest_possible_win_timer_resolution()
 {
-#ifndef __STANDALONE__
-	// First crank up the multimedia timer resolution to its max
-	// this gives the system much finer timeslices (usually 1-2ms)
-	win_timer_result = timeGetDevCaps(&win_timer_caps, sizeof(win_timer_caps));
-	if (win_timer_result == TIMERR_NOERROR)
-		timeBeginPeriod(win_timer_caps.wPeriodMin);
-
-	// Then try the even finer sliced (usually 0.5ms) low level variant
-#ifdef USE_LOWLEVEL_PRECISION_SETTING
-	hNtDll = LoadLibrary("NtDll.dll");
-	if (hNtDll) {
-		NtQueryTimerResolution = (NTQUERYTIMERRESOLUTION)GetProcAddress(hNtDll, "NtQueryTimerResolution");
-		NtSetTimerResolution = (NTSETTIMERRESOLUTION)GetProcAddress(hNtDll, "NtSetTimerResolution");
-		if (NtQueryTimerResolution && NtSetTimerResolution) {
-			ULONG min_period, tmp;
-			NtQueryTimerResolution(&tmp, &min_period, &win_timer_old_period);
-			if (min_period < 4500) // just to not screw around too much with the time (i.e. potential timer improvements in future HW/OSs), limit timer period to 0.45ms (picked 0.45 here instead of 0.5 as apparently some current setups can feature values just slightly below 0.5, so just leave them at this native rate then)
-				min_period = 5000;
-			if (min_period < 10000) // only set this if smaller 1ms, cause otherwise timeBeginPeriod already did the job
-				NtSetTimerResolution(min_period, TRUE, &tmp);
-			else
-				win_timer_old_period = -1;
-		}
-	}
-#endif
-#endif
 }
 
 void restore_win_timer_resolution()
@@ -80,13 +50,6 @@ void restore_win_timer_resolution()
 	}
 #endif
 
-#ifndef __STANDALONE__
-	if (win_timer_result == TIMERR_NOERROR)
-	{
-		timeEndPeriod(win_timer_caps.wPeriodMin);
-		win_timer_result = TIMERR_NOCANDO;
-	}
-#endif
 }
 
 //
@@ -339,71 +302,3 @@ double MaxTheoreticRadiation(const unsigned int year, const double rlat) // radi
     return maxTR;
 }
 
-#if 0
-// Height of sun in radians
-double SolarHeight(const unsigned int tu, // universal time (0,1,2,.....,23)
-                   const unsigned int day, const unsigned int month, const unsigned int year, const double rlong, const double rlat) // longitude in radian (positive east and negative west)
-{
-    const double dayAngle = AngleOfDay(day, month, year);
-    const double declination = SolarDeclination(dayAngle);
-    const double tsvh = tu * (M_PI / 12.) + rlong * (180. / (15.*12.)) + EquationOfTimeRadian(dayAngle);
-
-    const double c0 = cos(rlat - declination);
-    const double c1 = cos(rlat + declination);
-    const double c2 = cos(tsvh);
-    return asin(0.5*(c0 - c1 - c2*(c0 + c1)));
-}
-
-// http://www.cs.utsa.edu/~cs1063/projects/Spring2011/Project1/jdn-explanation.html
-int JulianConversion(const unsigned int year, const unsigned int month, const unsigned int day)
-{
-    const int a = (14 - month) / 12;
-    const int y = year + 4800 - a;
-    const int m = month + 12 * a - 3;
-    return day + (153 * m + 2) / 5 + 365 * y + y / 4 + 
-        ((year > 1582 || (year == 1582 && month > 10) || (year == 1582 && month == 10 && day >= 15)) ? (- y / 100 + y / 400 - 32045) : - 32083);
-}
-
-int _tmain(int argc, _TCHAR* argv[])
-{
-    const unsigned int day = 16;
-    const unsigned int month = 12;
-    const unsigned int year = 2015;
-    const double lat = 52.52;
-    const double lon = 13.37;
-
-    //
-
-    const double rlat = lat * (M_PI / 180.);
-    const double rlong = lon * (M_PI / 180.);
-
-    const double _AngleOfDay = AngleOfDay(day, month, year);
-    std::cout << "Angle of day: " << _AngleOfDay << '\n';
-
-    const double _Declination = SolarDeclination(_AngleOfDay);
-    std::cout << "Declination (Delta): " << _Declination << '\n';
-
-    const double _EquationOfTime = EquationOfTimeRadian(_AngleOfDay) * (12. / M_PI);
-    std::cout << "Equation Of Time (Delta): " << _EquationOfTime << '\n';
-
-    const double _DayDurationHours = DayDurationHours(_Declination, rlat);
-    std::cout << "Day duration: " << _DayDurationHours << '\n';
-
-    const double _OrbitalExcentricity = OrbitalExcentricity(_AngleOfDay);
-    std::cout << "Excentricity: " << _OrbitalExcentricity << '\n';
-
-    const double _TheoreticRadiation = TheoreticRadiation(day, month, year, rlat);
-    std::cout << "Theoretical radiation: " << _TheoreticRadiation << '\n';
-
-    const double _MaxTheoreticRadiation = MaxTheoreticRadiation(year, rlat);
-    std::cout << "Max./Year Theoretical radiation: " << _MaxTheoreticRadiation << '\n';
-
-    const double _SunriseLocalTime = SunsetSunriseLocalTime(day, month, year, rlong, rlat, true);
-    std::cout << "Sunrise Local Time: " << _SunriseLocalTime << '\n';
-
-    const double _SunsetLocalTime = SunsetSunriseLocalTime(day, month, year, rlong, rlat, false);
-    std::cout << "Sunset Local Time: " << _SunsetLocalTime << '\n';
-
-    return 0;
-}
-#endif

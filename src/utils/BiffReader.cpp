@@ -6,9 +6,7 @@
 #include <mutex>
 static std::mutex mtx; //!! only used for Wine multithreading bug workaround
 
-#ifdef __STANDALONE__
 #include <fstream>
-#endif
 
 
 BiffReader::BiffReader(IStream *pistream, const int version, const HCRYPTHASH hcrypthash, const HCRYPTKEY hcryptkey)
@@ -30,10 +28,6 @@ void BiffReader::ReadBytes(void * const pv, const uint32_t count)
    if (iow)
       mtx.unlock();
 
-#ifndef __STANDALONE__
-   if (m_hcrypthash)
-      CryptHashData(m_hcrypthash, (BYTE *)pv, count, 0);
-#endif
 }
 
 int BiffReader::GetIntNoHash()
@@ -154,30 +148,6 @@ string BiffReader::AsScript(bool isScriptProtected)
    m_hasError |= FAILED(m_pistream->Read(szText, cchar, &read));
    m_hasError |= read != cchar;
 
-#ifndef __STANDALONE__
-   if (m_hcrypthash)
-      CryptHashData(m_hcrypthash, (BYTE *)szText, cchar, 0);
-
-   // if there is a valid key, then decrypt the script text (now in szText, must be done after the hash is updated)
-   if (isScriptProtected && (m_hcryptkey != 0))
-   {
-      // get the size of the data to decrypt
-      DWORD cryptlen = cchar;
-
-      // decrypt the script
-      CryptDecrypt(m_hcryptkey, // key to use
-         0, // not hashing data at the same time
-         TRUE, // last block (or only block)
-         0, // no flags
-         (BYTE *)szText, // buffer to decrypt
-         &cryptlen); // size of data to decrypt
-
-      GetLastError(); // purge any errors
-
-      // update the size of the buffer
-      cchar = cryptlen;
-   }
-#endif
 
    // ensure that the script is null terminated
    szText[cchar] = '\0';

@@ -8,56 +8,6 @@
 
 // not thread safe!
 
-#if 0
-static void NormalizeNormals()
-{
-   for (size_t i = 0; i < indices.size(); i += 3)
-   {
-      const unsigned int A = indices[i];
-      const unsigned int B = indices[i + 1];
-      const unsigned int C = indices[i + 2];
-      const float x1 = verts[B].x - verts[A].x;
-      const float y1 = verts[B].y - verts[A].y;
-      const float z1 = verts[B].z - verts[A].z;
-      const float x2 = verts[C].x - verts[A].x;
-      const float y2 = verts[C].y - verts[A].y;
-      const float z2 = verts[C].z - verts[A].z;
-      float nx = y1*z2 - z1*y2;
-      float ny = z1*x2 - x1*z1;
-      float nz = x1*y2 - y1*x1;
-      const float inv_len = 1.0f / sqrtf(nx*nx + ny*ny + nz*nz);
-      nx *= inv_len;
-      ny *= inv_len;
-      nz *= inv_len;
-      const int v[3] = { A, B, C };
-      vector<int> seen;
-      seen.resize(verts.size(), 0); //!!
-      for (int t = 0; t < 3; t++)
-      {
-         const int c = v[t];
-         seen[c]++;
-         if (seen[c] == 1)
-         {
-            verts[c].nx = nx;
-            verts[c].ny = ny;
-            verts[c].nz = nz;
-         }
-         else
-         {
-            const float inv_seen = 1.0f / (float)seen[c];
-            verts[c].nx = verts[c].nx * (1.0f - inv_seen) + nx*inv_seen;
-            verts[c].ny = verts[c].ny * (1.0f - inv_seen) + ny*inv_seen;
-            verts[c].nz = verts[c].nz * (1.0f - inv_seen) + nz*inv_seen;
-            const float inv_len2 = 1.0f / sqrtf(verts[c].nx*verts[c].nx + verts[c].ny*verts[c].ny + verts[c].nz*verts[c].nz);
-            verts[c].nx *= inv_len2;
-            verts[c].ny *= inv_len2;
-            verts[c].nz *= inv_len2;
-         }
-      }
-      seen.clear();
-   }
-}
-#endif
 
 bool ObjLoader::Load(const string& filename, const bool flipTv, const bool convertToLeftHanded)
 {
@@ -81,9 +31,6 @@ bool ObjLoader::Load(const string& filename, const bool flipTv, const bool conve
    {
       char lineHeader[256];
       const int res = fscanf_s(f, "\n%s", lineHeader
-#ifndef __STANDALONE__
-      ,static_cast<unsigned int>(std::size(lineHeader))
-#endif
       );
       if (res == EOF)
       {
@@ -351,20 +298,6 @@ void ObjLoader::Save(const string& filename, const string& description, const Me
 
 bool ObjLoader::ExportStart(const string& filename)
 {
-#ifndef __STANDALONE__
-   const string matname = filename.substr(0, filename.find_last_of('.')) + ".mtl";
-   if ((fopen_s(&m_matFile, matname.c_str(), "wt") != 0) || !m_matFile)
-      return false;
-   fprintf_s(m_matFile, "# Visual Pinball table mat file\n");
-
-   if ((fopen_s(&m_fHandle, filename.c_str(), "wt") != 0) || !m_fHandle)
-      return false;
-   m_faceIndexOffset = 0;
-   fprintf_s(m_fHandle, "# Visual Pinball table OBJ file\n");
-   const size_t pos = matname.find_last_of(PATH_SEPARATOR_CHAR);
-   const string nameonly = pos != string::npos ? matname.substr(pos+1) : matname;
-   fprintf_s(m_fHandle, "mtllib %s\n", nameonly.c_str());
-#endif
    return true;
 }
 
@@ -427,80 +360,6 @@ void ObjLoader::WriteFaceInfoList(const WORD* faces, const unsigned int numIndic
 
 bool ObjLoader::LoadMaterial(const string& filename, Material* const mat)
 {
-#ifndef __STANDALONE__
-   FILE* f;
-   if ((fopen_s(&f, filename.c_str(), "r") != 0) || !f)
-      return false;
-
-   while (true)
-   {
-      char lineHeader[256];
-      const int res = fscanf_s(f, "\n%s", lineHeader, static_cast<unsigned int>(std::size(lineHeader)));
-      if (res == EOF)
-      {
-         fclose(f);
-         return true;
-      }
-      if (lineHeader == "newmtl"sv)
-      {
-         char buf[MAXSTRING];
-         fscanf_s(f, "%s\n", buf, MAXSTRING);
-         mat->m_name = buf;
-      }
-      else if (lineHeader == "Ns"sv)
-      {
-         float tmp;
-         fscanf_s(f, "%f\n", &tmp);
-         const int d = (int)(tmp * 100.f + 0.5f);
-         tmp = (float)d / 100.0f;
-         // normally a wavefront material specular exponent ranges from 0..1000.
-         // but our shininess calculation differs from the way how e.g. Blender is calculating the specular exponent
-         // starting from 0.5 and use only half of the exponent resolution to get a similar look
-         mat->m_fRoughness = 0.5f + (tmp / 2000.0f);
-
-         if (mat->m_fRoughness > 1.0f)
-            mat->m_fRoughness = 1.0f;
-         if (mat->m_fRoughness < 0.01f)
-            mat->m_fRoughness = 0.01f;
-      }
-      else if (lineHeader == "Ka"sv)
-      {
-         Vertex3Ds tmp;
-         fscanf_s(f, "%f %f %f\n", &tmp.x, &tmp.y, &tmp.z);
-      }
-      else if (lineHeader == "Kd"sv)
-      {
-         Vertex3Ds tmp;
-         fscanf_s(f, "%f %f %f\n", &tmp.x, &tmp.y, &tmp.z);
-         const uint32_t r = (uint32_t)(tmp.x * 255.f);
-         const uint32_t g = (uint32_t)(tmp.y * 255.f);
-         const uint32_t b = (uint32_t)(tmp.z * 255.f);
-         mat->m_cBase = RGB(r, g, b);
-      }
-      else if (lineHeader == "Ks"sv)
-      {
-         Vertex3Ds tmp;
-         fscanf_s(f, "%f %f %f\n", &tmp.x, &tmp.y, &tmp.z);
-         const uint32_t r = (uint32_t)(tmp.x * 255.f);
-         const uint32_t g = (uint32_t)(tmp.y * 255.f);
-         const uint32_t b = (uint32_t)(tmp.z * 255.f);
-         mat->m_cGlossy = RGB(r, g, b);
-      }
-      else if (lineHeader == "Ni"sv)
-      {
-         float tmp;
-         fscanf_s(f, "%f\n", &tmp);
-      }
-      else if (lineHeader == "d"sv)
-      {
-         float tmp;
-         fscanf_s(f, "%f\n", &tmp);
-         mat->m_fOpacity = min(tmp,1.0f);
-         break;
-      }
-   }
-   fclose(f);
-#endif
    return true;
 }
 
