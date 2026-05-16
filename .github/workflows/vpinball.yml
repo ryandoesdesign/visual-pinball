@@ -44,70 +44,34 @@ jobs:
           echo "tag=${TAG}" >> $GITHUB_OUTPUT
 
   build:
-    name: Build VPinballX_${{ matrix.type }}-${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.config }}
-    runs-on: ${{ matrix.os }}
+    name: Build VPinballX_${{ matrix.type }}-macos-arm64-${{ matrix.config }}
+    runs-on: macos-15
     needs: [ version ]
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { os: windows-2025-vs2026, type: BGFX, platform: windows, arch: x64, config: Release }
-          - { os: windows-2025-vs2026, type: BGFX, platform: windows, arch: x64, config: Debug }
-          - { os: windows-2025-vs2026, type: BGFX, platform: windows, arch: x86, config: Release }
-          - { os: windows-2025-vs2026, type: BGFX, platform: windows, arch: x86, config: Debug }
-          - { os: macos-15, type: BGFX, platform: macos, arch: arm64, config: Release }
-          - { os: macos-15, type: BGFX, platform: macos, arch: x64, config: Release }
-          - { os: ubuntu-24.04, type: BGFX, platform: linux, arch: x64, config: Release }
-          - { os: windows-2025, type: BGFX, platform: windows-mingw, arch: x64, config: Release }
-          - { os: windows-2025-vs2026, type: GL, platform: windows, arch: x64, config: Release }
-          - { os: windows-2025-vs2026, type: GL, platform: windows, arch: x86, config: Release }
-          - { os: windows-2025-vs2026, type: GL, platform: windows, arch: x64, config: Debug }
-          - { os: windows-2025-vs2026, type: GL, platform: windows, arch: x86, config: Debug }
-          - { os: macos-15, type: GL, platform: macos, arch: arm64, config: Release }
-          - { os: macos-15, type: GL, platform: macos, arch: x64, config: Release }
-          - { os: ubuntu-24.04, type: GL, platform: linux, arch: x64, config: Release }
+          - { type: BGFX, config: Release }
+          - { type: GL, config: Release }
     steps:
-      - if: (matrix.platform == 'windows' || matrix.platform == 'windows-mingw')
-        uses: microsoft/setup-msbuild@v3
-      - if: (matrix.platform == 'windows' || matrix.platform == 'windows-mingw')
-        run: |
-          /c/msys64/usr/bin/bash.exe -l -c "pacman -S --noconfirm make diffutils yasm bison git autoconf automake libtool"
-          if [[ "${{ matrix.arch }}" == "x64" ]]; then
-            /c/msys64/usr/bin/bash.exe -l -c "pacman -S --noconfirm mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-zlib mingw-w64-ucrt-x86_64-libwinpthread mingw-w64-ucrt-x86_64-libiconv mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-tools"
-          else
-            /c/msys64/usr/bin/bash.exe -l -c "pacman -S --noconfirm mingw-w64-i686-gcc mingw-w64-i686-zlib mingw-w64-i686-libwinpthread mingw-w64-i686-libiconv mingw-w64-i686-cmake"
-          fi
-      - if: (matrix.platform == 'macos')
-        run: |
+      - run: |
           brew install bison autoconf automake libtool nasm create-dmg
           echo "$(brew --prefix bison)/bin" >> $GITHUB_PATH
-      - if: (matrix.platform == 'linux')
-        run: |
-          sudo apt-get update
-          sudo apt install cmake nasm bison zlib1g-dev libdrm-dev libgbm-dev libglu1-mesa-dev libegl-dev libgl1-mesa-dev libwayland-dev libwayland-egl-backend-dev libudev-dev libx11-dev libxcursor-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libxrandr-dev libasound2-dev libpipewire-0.3-dev
       - uses: actions/checkout@v6
       - name: Calculate external cache hash
         run: |
-          echo "EXT_HASH=$(cat platforms/config.sh platforms/${{ matrix.platform }}-${{ matrix.arch }}/external.sh | sha256sum | cut -c1-12)" >> $GITHUB_ENV
+          echo "EXT_HASH=$(cat platforms/config.sh platforms/macos-arm64/external.sh | sha256sum | cut -c1-12)" >> $GITHUB_ENV
       - name: Restore external cache
         id: cache
         uses: actions/cache/restore@v5
         with:
           path: external
-          key: ${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.config }}-external-${{ env.EXT_HASH }}
+          key: macos-arm64-${{ matrix.config }}-external-${{ env.EXT_HASH }}
           restore-keys: |
-            ${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.config }}-external-
+            macos-arm64-${{ matrix.config }}-external-
       - name: Build external cache
         run: |
-          if [[ "${{ matrix.platform }}" == "windows-mingw" ]]; then
-            CURRENT_DIR="$(pwd)"
-            MSYSTEM=UCRT64 /c/msys64/usr/bin/bash.exe -l -c "
-              cd \"${CURRENT_DIR}\" &&
-              BUILD_TYPE=${{ matrix.config }} ./platforms/${{ matrix.platform }}-${{ matrix.arch }}/external.sh
-            "
-          else
-            BUILD_TYPE=${{ matrix.config }} ./platforms/${{ matrix.platform }}-${{ matrix.arch }}/external.sh
-          fi
+          BUILD_TYPE=${{ matrix.config }} ./platforms/macos-arm64/external.sh
       - if: steps.cache.outputs.cache-hit != 'true'
         name: Clean external cache
         run: |
@@ -119,18 +83,7 @@ jobs:
         uses: actions/cache/save@v5
         with:
           path: external
-          key: ${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.config }}-external-${{ env.EXT_HASH }}
-      - if: ((matrix.platform == 'windows' || matrix.platform == 'windows-mingw') && matrix.type == 'BGFX')
-        name: Package third-party artifacts
-        run: |
-          cd third-party && 7z a -r ../VPinballX-${{ needs.version.outputs.tag }}-dev-third-party-${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.config }}.zip .
-      - if: ((matrix.platform == 'windows' || matrix.platform == 'windows-mingw') && matrix.type == 'BGFX')
-        name: Save third-party artifacts
-        uses: actions/upload-artifact@v7
-        with:
-          name: VPinballX-${{ needs.version.outputs.tag }}-dev-third-party-${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.config }}
-          path: VPinballX-${{ needs.version.outputs.tag }}-dev-third-party-${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.config }}.zip
-          archive: false
+          key: macos-arm64-${{ matrix.config }}-external-${{ env.EXT_HASH }}
       - name: Set version
         run: |
           perl -i -pe"s/9999/${{ needs.version.outputs.revision }}/g" src/core/git_version.h
@@ -138,30 +91,10 @@ jobs:
       - name: Build
         run: |
           TYPE=$(echo "${{ matrix.type }}" | tr '[:upper:]' '[:lower:]')
-          cp make/CMakeLists_${TYPE}-${{ matrix.platform }}-${{ matrix.arch }}.txt CMakeLists.txt
-          if [[ "${{ matrix.platform }}" == "windows-mingw" ]]; then
-            CURRENT_DIR="$(pwd)"
-            MSYSTEM=UCRT64 /c/msys64/usr/bin/bash.exe -l -c "
-              cd \"${CURRENT_DIR}\" &&
-              cmake -DCMAKE_BUILD_TYPE=${{ matrix.config }} -B build/${{ matrix.config }} &&
-              cmake --build build/${{ matrix.config }} -- -j\$(nproc)
-            "
-          elif [[ "${{ matrix.platform }}" == "windows" ]]; then
-            if [[ "${{ matrix.arch }}" == "x64" ]]; then
-              cmake -G "Visual Studio 18 2026" -A x64 -B build
-            else
-              cmake -G "Visual Studio 18 2026" -A Win32 -B build
-            fi
-            cmake --build build --config ${{ matrix.config }}
-          elif [[ "${{ matrix.platform }}" == "macos" ]]; then
-            cmake -DCMAKE_BUILD_TYPE=${{ matrix.config }} -B build/${{ matrix.config }}
-            cmake --build build/${{ matrix.config }} -- -j$(sysctl -n hw.ncpu)
-          else
-            cmake -DCMAKE_BUILD_TYPE=${{ matrix.config }} -B build/${{ matrix.config }}
-            cmake --build build/${{ matrix.config }} -- -j$(nproc)
-          fi
-      - if: (matrix.platform == 'macos')
-        name: Code signing, notarization, and packaging
+          cp make/CMakeLists_${TYPE}-macos-arm64.txt CMakeLists.txt
+          cmake -DCMAKE_BUILD_TYPE=${{ matrix.config }} -B build/${{ matrix.config }}
+          cmake --build build/${{ matrix.config }} -- -j$(sysctl -n hw.ncpu)
+      - name: Code signing, notarization, and packaging
         run: |
           cd build/${{ matrix.config }}
           if [[ "${{ vars.MACOS_CODESIGN }}" == "1" ]]; then
@@ -184,138 +117,22 @@ jobs:
             xcrun stapler staple VPinballX_${{ matrix.type }}.app
           fi
           create-dmg \
-            --volname "VPinballX_${{ matrix.type }}-${{ needs.version.outputs.tag }}-${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.config }}" \
+            --volname "VPinballX_${{ matrix.type }}-${{ needs.version.outputs.tag }}-macos-arm64-${{ matrix.config }}" \
             --volicon ../../standalone/macos/VPinballX.icns \
             --window-pos 200 120 \
             --window-size 520 320 \
             --icon-size 64 \
             --icon "VPinballX_${{ matrix.type }}.app" 130 120 \
             --app-drop-link 390 120 \
-            VPinballX_${{ matrix.type }}-${{ needs.version.outputs.tag }}-${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.config }}.dmg \
+            VPinballX_${{ matrix.type }}-${{ needs.version.outputs.tag }}-macos-arm64-${{ matrix.config }}.dmg \
             VPinballX_${{ matrix.type }}.app
       - name: Stage artifacts
         run: |
           mkdir tmp
-          if [[ "${{ matrix.platform }}" == "windows" || "${{ matrix.platform }}" == "windows-mingw" ]]; then
-            mkdir stage
-            if [[ "${{ matrix.arch }}" == "x64" ]]; then
-              cp build/${{ matrix.config }}/VPinballX_${{ matrix.type }}64.exe stage
-            else
-              cp build/${{ matrix.config }}/VPinballX_${{ matrix.type }}.exe stage
-            fi
-            cp build/${{ matrix.config }}/*.dll stage
-            if [[ "${{ matrix.type }}" == "GL" ]]; then
-              cp -r build/${{ matrix.config }}/shaders-${{ needs.version.outputs.version_short }} stage
-            fi
-            cp -r build/${{ matrix.config }}/assets stage
-            cp -r build/${{ matrix.config }}/plugins stage
-            cp -r build/${{ matrix.config }}/scripts stage
-            cp -r build/${{ matrix.config }}/docs stage
-            cd stage && 7z a -r ../tmp/VPinballX_${{ matrix.type }}-${{ needs.version.outputs.tag }}-${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.config }}.zip .
-          elif [[ "${{ matrix.platform }}" == "macos" ]]; then
-            cp build/${{ matrix.config }}/*.dmg tmp
-          elif [[ "${{ matrix.platform }}" == "linux" ]]; then
-            mkdir stage
-            cp build/${{ matrix.config }}/VPinballX_${{ matrix.type }} stage
-            cp -a build/${{ matrix.config }}/*.{so,so.*} stage
-            if [[ "${{ matrix.type }}" == "GL" ]]; then
-              cp -r build/${{ matrix.config }}/shaders-${{ needs.version.outputs.version_short }} stage
-            fi
-            cp -r build/${{ matrix.config }}/assets stage
-            cp -r build/${{ matrix.config }}/plugins stage
-            cp -r build/${{ matrix.config }}/scripts stage
-            cp -r build/${{ matrix.config }}/docs stage
-            tar czf tmp/VPinballX_${{ matrix.type }}-${{ needs.version.outputs.tag }}-${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.config }}.tar.gz -C stage .
-          fi
+          cp build/${{ matrix.config }}/*.dmg tmp
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: VPinballX_${{ matrix.type }}-${{ needs.version.outputs.tag }}-${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.config }}
-          path: tmp/*
-          archive: false
-
-  build-dx:
-    name: Build VPinballX-${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.config }}
-    runs-on: windows-2025-vs2026
-    needs: [ version ]
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { platform: windows, arch: x64, config: Release }
-          - { platform: windows, arch: x64, config: Debug }
-          - { platform: windows, arch: x86, config: Release }
-          - { platform: windows, arch: x86, config: Debug }
-    steps:
-      - uses: microsoft/setup-msbuild@v3
-      - if: (matrix.platform == 'windows')
-        run: |
-          /c/msys64/usr/bin/bash.exe -l -c "pacman -S --noconfirm make diffutils yasm autoconf automake libtool"
-          if [[ "${{ matrix.arch }}" == "x64" ]]; then
-            /c/msys64/usr/bin/bash.exe -l -c "pacman -S --noconfirm mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-zlib mingw-w64-ucrt-x86_64-libwinpthread mingw-w64-ucrt-x86_64-libiconv mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-tools"
-          else
-            /c/msys64/usr/bin/bash.exe -l -c "pacman -S --noconfirm mingw-w64-i686-gcc mingw-w64-i686-zlib mingw-w64-i686-libwinpthread mingw-w64-i686-libiconv mingw-w64-i686-cmake"
-          fi
-      - uses: actions/checkout@v6
-      - name: Calculate external cache hash
-        run: |
-          echo "EXT_HASH=$(cat platforms/config.sh platforms/${{ matrix.platform }}-${{ matrix.arch }}/external.sh | sha256sum | cut -c1-12)" >> $GITHUB_ENV
-      - name: Restore external cache
-        id: cache
-        uses: actions/cache/restore@v5
-        with:
-          path: external
-          key: ${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.config }}-external-${{ env.EXT_HASH }}
-          restore-keys: |
-            ${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.config }}-external-
-      - name: Build external cache
-        run: |
-          BUILD_TYPE=${{ matrix.config }} ./platforms/${{ matrix.platform }}-${{ matrix.arch }}/external.sh
-      - if: steps.cache.outputs.cache-hit != 'true'
-        name: Clean external cache
-        run: |
-          find external -type d -name ".git" -exec rm -rf {} + 2>/dev/null || true
-          find external -name "*.tar.gz" -delete 2>/dev/null || true
-          find external \( -name "*.o" -o -name "*.obj" \) -delete 2>/dev/null || true
-      - if: steps.cache.outputs.cache-hit != 'true'
-        name: Save external cache
-        uses: actions/cache/save@v5
-        with:
-          path: external
-          key: ${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.config }}-external-${{ env.EXT_HASH }}
-      - name: Setup build tools
-        run: |
-          # cmake can't find fxc.exe so copy one into the a directory in the path
-          cp "/c/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x86/fxc.exe" /mingw64/bin
-      - name: Set version
-        run: |
-          perl -i -pe"s/9999/${{ needs.version.outputs.revision }}/g" src/core/git_version.h
-          perl -i -pe"s/unknown/${{ needs.version.outputs.sha7 }}/g" src/core/git_version.h
-      - name: Build
-        run : |
-          cp make/CMakeLists_dx9-${{ matrix.platform }}-${{ matrix.arch }}.txt CMakeLists.txt
-          if [[ "${{ matrix.arch }}" == "x64" ]]; then
-            cmake -G "Visual Studio 18 2026" -A x64 -B build
-          else
-            cmake -G "Visual Studio 18 2026" -A Win32 -B build
-          fi
-          cmake --build build --config ${{ matrix.config }}
-      - name: Stage artifacts
-        run: |
-          mkdir tmp stage
-          if [[ "${{ matrix.arch }}" == "x64" ]]; then
-            cp build/${{ matrix.config }}/VPinballX64.exe stage
-          else
-            cp build/${{ matrix.config }}/VPinballX.exe stage
-          fi
-          cp build/${{ matrix.config }}/*.dll stage
-          cp -r build/${{ matrix.config }}/assets stage
-          cp -r build/${{ matrix.config }}/scripts stage
-          cp -r build/${{ matrix.config }}/docs stage
-          cd stage && 7z a -r ../tmp/VPinballX-${{ needs.version.outputs.tag }}-${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.config }}.zip .
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v7
-        with:
-          name: VPinballX-${{ needs.version.outputs.tag }}-${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.config }}
+          name: VPinballX_${{ matrix.type }}-${{ needs.version.outputs.tag }}-macos-arm64-${{ matrix.config }}
           path: tmp/*
           archive: false
