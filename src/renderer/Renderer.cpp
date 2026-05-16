@@ -182,20 +182,6 @@ Renderer::Renderer(PinTable* const table, VPX::Window* wnd, VideoSyncMode& syncM
       0.f, 0.f);
    DisableBallLighting(m_table->m_settings.GetPlayer_DisableLightingForBalls());
 
-   #ifdef ENABLE_VR
-   if (m_stereo3D == STEREO_VR) {
-      colorFormat renderBufferFormatVR; // Legacy AMD Debugging (useless now, remove)
-      switch (g_pplayer->m_ptable->m_settings.GetPlayerVR_EyeFBFormat())
-      {
-      case 0: renderBufferFormatVR = RGB8; break;
-      case 2: renderBufferFormatVR = RGB16F; break;
-      case 3: renderBufferFormatVR = RGBA16F; break;
-      default: renderBufferFormatVR = RGBA8; break;
-      }
-      m_pOffscreenVRLeft = new RenderTarget(m_renderDevice, SurfaceType::RT_DEFAULT, "VRLeft"s, m_renderWidth, m_renderHeight, renderBufferFormatVR, false, 1, "Fatal Error: unable to create left eye buffer!");
-      m_pOffscreenVRRight = new RenderTarget(m_renderDevice, SurfaceType::RT_DEFAULT, "VRRight"s, m_renderWidth, m_renderHeight, renderBufferFormatVR, false, 1, "Fatal Error: unable to create right eye buffer!");
-   }
-   #endif
 
    // alloc bloom tex at 1/4 x 1/4 res (allows for simple HQ downscale of clipped input while saving memory)
    m_pBloomBufferTexture = new RenderTarget(m_renderDevice, 
@@ -1619,11 +1605,6 @@ void Renderer::RenderItem(IEditable* const editable, bool isNoBackdrop)
    const PartGroupData::SpaceReference spaceReference = editable->GetPartGroup() ? editable->GetPartGroup()->GetReferenceSpace() : PartGroupData::SpaceReference::SR_PLAYFIELD;
    if (m_mvpSpaceReference != spaceReference)
    {
-      #if defined(ENABLE_XR)
-      if (m_stereo3D == STEREO_VR)
-         g_pplayer->m_vrDevice->UpdateVRPosition(spaceReference, m_mvp);
-      else
-      #endif
       {
          switch (spaceReference)
          {
@@ -2293,13 +2274,8 @@ void Renderer::SetupTonemapping(RenderTarget* renderedRT, RenderTarget* tonemapR
    }
    else
    {
-      #ifdef ENABLE_VR
-         // Legacy OpenVR has hacked colorspace conversion
-         m_renderDevice->m_FBShader->SetVector(SHADER_exposure_wcg, m_exposure, 1.f, 1.f, 0.f);
-      #else
          // VR device expects linear RGB value (for linear layer composition)
          m_renderDevice->m_FBShader->SetVector(SHADER_exposure_wcg, m_exposure, 1.f, /*100.f*//*203.f*/350.f/10000.f, g_pplayer->m_vrDevice ? 2.f : 0.f); //!! 203 nits as SDR reference? //!! or 100 as in BT2446 spec? // but both result in too dark images for BT2446 conversion at least compared to the other mappers
-      #endif
 
       // dummy values only, unused at the moment
       //m_renderDevice->m_FBShader->SetVector(SHADER_spline1, 0.f,0.f,0.f,0.f);
@@ -2697,145 +2673,6 @@ RenderTarget* Renderer::ApplyStereo(RenderTarget* renderedRT, RenderTarget* outp
 
    if (m_stereo3D == STEREO_VR)
    {
-   #if defined(ENABLE_XR) || defined(ENABLE_VR)
-      int w = renderedRT->GetWidth();
-      int h = renderedRT->GetHeight();
-
-      #if defined(ENABLE_XR)
-         assert(outputBackBuffer == m_renderDevice->m_outputWnd[0]->GetBackBuffer()); // XR swapchain
-         // Rendering is already directly being performed to the XR swapchain image, so nothing to do except for depth buffer
-         // TODO we should directly use the swapchain depth buffer too to avoid the copy
-         // FIXME this will not work as the current backbuffer is declared as not having a depth buffer (even if it has like here), beside BGFX does not support blitting depth to the default backbuffer
-         if (g_pplayer->m_vrDevice->UseDepthBuffer())
-         {
-            // Copy depth buffer to OpenXR swapchain's current depth target
-            m_renderDevice->SetRenderTarget("OpenXR-Depth"s, outputBackBuffer, true, true);
-            m_renderDevice->AddRenderTargetDependency(GetBackBufferTexture(), true);
-            m_renderDevice->BlitRenderTarget(GetBackBufferTexture(), outputBackBuffer, false, true);
-         }
-         // FIXME no preview for Vulkan (as we are not creating the desktop swapchain)
-         if (bgfx::getRendererType() == bgfx::RendererType::Vulkan)
-            return outputBackBuffer;
-
-      #elif defined(ENABLE_VR)
-         // Copy each eye to the HMD texture
-         assert(renderedRT != outputBackBuffer);
-            
-         RenderTarget *leftTexture = GetOffscreenVR(0);
-         m_renderDevice->SetRenderTarget("Left Eye"s, leftTexture, false);
-         m_renderDevice->AddRenderTargetDependency(renderedRT);
-         m_renderDevice->BlitRenderTarget(renderedRT, leftTexture, true, false, 0, 0, w, h, 0, 0, w, h, 0, 0);
-
-         RenderTarget *rightTexture = GetOffscreenVR(1);
-         m_renderDevice->SetRenderTarget("Right Eye"s, rightTexture, false);
-         m_renderDevice->AddRenderTargetDependency(renderedRT);
-         m_renderDevice->BlitRenderTarget(renderedRT, rightTexture, true, false, 0, 0, w, h, 0, 0, w, h, 1, 0);
-      #endif
-
-      // Blit preview
-      #if defined(ENABLE_XR)
-         assert(m_renderDevice->m_outputWnd.size() == 2); // For the time being, we rely on the fact that the First output is the VR Headset, and the second is the VR preview OS window
-         RenderTarget* previewRT = m_renderDevice->m_outputWnd[1]->GetBackBuffer();
-         m_renderDevice->SetRenderTarget("VR Preview"s, previewRT, false, true);
-
-      #elif defined(ENABLE_VR)
-         RenderTarget* previewRT = outputBackBuffer;
-         m_renderDevice->SetRenderTarget("VR Preview"s, previewRT, false);
-         m_renderDevice->AddRenderTargetDependency(leftTexture); // To ensure blit is made
-         m_renderDevice->AddRenderTargetDependency(rightTexture); // To ensure blit is made
-      #endif
-      m_renderDevice->AddRenderTargetDependency(renderedRT);
-      const int previewW = m_vrPreview == VRPREVIEW_BOTH ? previewRT->GetWidth() / 2 : previewRT->GetWidth(), previewH = previewRT->GetHeight();
-      const float ar = (float)w / (float)h, previewAr = (float)previewW / (float)previewH;
-      int x = 0, y = 0;
-      int fw = w, fh = h;
-      if ((m_vrPreviewShrink && ar < previewAr) || (!m_vrPreviewShrink && ar > previewAr))
-      { // Fit on Y
-         const int scaledW = (int)((float)h * previewAr);
-         x = (w - scaledW) / 2;
-         fw = scaledW;
-      }
-      else
-      { // Fit on X
-         const int scaledH = (int)((float)w / previewAr);
-         y = (h - scaledH) / 2;
-         fh = scaledH;
-      }
-      if (m_vrPreviewShrink || m_vrPreview == VRPREVIEW_DISABLED)
-         m_renderDevice->Clear(clearType::TARGET | clearType::ZBUFFER, 0x00000000);
-
-      #if defined(ENABLE_XR)
-      
-         Vertex3D_TexelOnly verts[4] =
-         {
-            { -1.0f,  1.0f, 0.0f, static_cast<float>(x     ) / w, static_cast<float>(y     ) / h },
-            {  1.0f,  1.0f, 0.0f, static_cast<float>(x + fw) / w, static_cast<float>(y     ) / h },
-            { -1.0f, -1.0f, 0.0f, static_cast<float>(x     ) / w, static_cast<float>(y + fh) / h },
-            {  1.0f, -1.0f, 0.0f, static_cast<float>(x + fw) / w, static_cast<float>(y + fh) / h }
-         };
-         m_renderDevice->m_FBShader->SetTechnique(SHADER_TECHNIQUE_fb_mirror);
-         m_renderDevice->m_FBShader->SetVector(SHADER_w_h_height, 1.f, 1.f, 1.f, 1.f);
-         m_renderDevice->m_FBShader->SetTexture(SHADER_tex_fb_unfiltered, renderedRT->GetColorSampler(), SamplerFilter::SF_BILINEAR);
-         if (m_vrPreview == VRPREVIEW_LEFT || m_vrPreview == VRPREVIEW_RIGHT)
-         {
-            m_renderDevice->m_FBShader->SetInt(SHADER_layer, m_vrPreview == VRPREVIEW_LEFT ? 0 : 1);
-            m_renderDevice->DrawTexturedQuad(m_renderDevice->m_FBShader, verts);
-         }
-         else if (m_vrPreview == VRPREVIEW_BOTH)
-         {
-            verts[0].x = verts[2].x = -1.f;
-            verts[1].x = verts[3].x = 0.f;
-            m_renderDevice->m_FBShader->SetInt(SHADER_layer, 0);
-            m_renderDevice->DrawTexturedQuad(m_renderDevice->m_FBShader, verts);
-            verts[0].x = verts[2].x = 0.f;
-            verts[1].x = verts[3].x = 1.f;
-            m_renderDevice->m_FBShader->SetInt(SHADER_layer, 1);
-            m_renderDevice->DrawTexturedQuad(m_renderDevice->m_FBShader, verts);
-         }
-
-         if (m_vrApplyColorKey)
-         {
-            // Apply a color mask for color keying. For the time being, this is the only way we have to support mixed reality
-            // as HMD does not expose passthrough layers to PCVR (at least Meta Quest 3, used for development).
-            // Therefore we leverage VirtualDesktop color keying feature. This needs to be performed as a post process to avoid
-            // blending the color key with the rendered scene (alpha blending which would be kept, as it is not fullfilling the
-            // color key after blending).
-            m_renderDevice->SetRenderTarget("VR ColorKeying"s, m_renderDevice->GetOutputBackBuffer(), true, true);
-            m_renderDevice->AddRenderTargetDependency(previewRT); // Add a dependency on the preview to ensure color keying is done after preview copy
-            Matrix3D matWorldViewProj[2];
-            matWorldViewProj[0].SetIdentity();
-            matWorldViewProj[1].SetIdentity();
-            const vec4 cameraPos[2] = { { 0.f, 0.f, 0.f, 0.f }, { 0.f, 0.f, 0.f, 0.f } };
-            m_renderDevice->m_basicShader->SetVector(SHADER_cameraPosWorld, &cameraPos[0], 2);
-            m_renderDevice->m_basicShader->SetMatrix(SHADER_matRotViewProj, &matWorldViewProj[0], 2);
-            m_renderDevice->m_basicShader->SetVector(SHADER_staticColor_Alpha, &m_vrColorKey);
-            m_renderDevice->m_basicShader->SetTechnique(SHADER_TECHNIQUE_unshaded_without_texture);
-            static constexpr Vertex3D_NoTex2 ckVerts[4] =
-            {
-               { -1.0f,  1.0f, 1.0f },
-               {  1.0f,  1.0f, 1.0f },
-               { -1.0f, -1.0f, 1.0f },
-               {  1.0f, -1.0f, 1.0f }
-            };
-            m_renderDevice->SetRenderState(RenderState::ZENABLE, RenderState::RS_TRUE);
-            m_renderDevice->SetRenderState(RenderState::ZFUNC, RenderState::Z_LESSEQUAL);
-            m_renderDevice->DrawTexturedQuad(m_renderDevice->m_basicShader, ckVerts);
-            m_renderDevice->m_basicShader->SetVector(SHADER_staticColor_Alpha, 1.f, 1.f, 1.f, 1.f);
-         }
-
-      #elif defined(ENABLE_VR)
-         if (m_vrPreview == VRPREVIEW_LEFT || m_vrPreview == VRPREVIEW_RIGHT)
-         {
-            m_renderDevice->BlitRenderTarget(renderedRT, previewRT, true, false, x, y, fw, fh, 0, 0, previewW, previewH, m_vrPreview == VRPREVIEW_LEFT ? 0 : 1, 0);
-         }
-         else if (m_vrPreview == VRPREVIEW_BOTH)
-         {
-            m_renderDevice->BlitRenderTarget(renderedRT, previewRT, true, false, x, y, fw, fh, 0, 0, previewW, previewH, 0, 0);
-            m_renderDevice->BlitRenderTarget(renderedRT, previewRT, true, false, x, y, fw, fh, previewW, 0, previewW, previewH, 1, 0);
-         }
-         m_renderDevice->SubmitVR(renderedRT);
-      #endif
-   #endif
 
       return outputBackBuffer;
    }
@@ -2928,25 +2765,6 @@ void Renderer::RenderFrame()
          m_renderDevice->Clear(clearType::TARGET | clearType::ZBUFFER, 0x000D0D0D);
       else
          m_renderDevice->Clear(clearType::TARGET | clearType::ZBUFFER, 0x00000000);
-      #ifdef ENABLE_XR
-      if (g_pplayer->IsVR())
-      {
-         if (std::shared_ptr<MeshBuffer> mask = g_pplayer->m_vrDevice->GetVisibilityMask(); mask)
-         {
-            static constexpr Vertex3Ds pos{0.f, 0.f, 200000.0f}; // Very high depth bias to ensure being rendered before other opaque parts (which are sorted front to back)
-            m_renderDevice->ResetRenderState();
-            m_renderDevice->SetRenderState(RenderState::CULLMODE, RenderState::CULL_NONE);
-            m_renderDevice->SetRenderState(RenderState::COLORWRITEENABLE, RenderState::RS_FALSE);
-            m_renderDevice->SetRenderState(RenderState::ZWRITEENABLE, RenderState::RS_TRUE);
-            m_renderDevice->SetRenderState(RenderState::ZENABLE, RenderState::RS_TRUE);
-            m_renderDevice->SetRenderState(RenderState::ZFUNC, RenderState::Z_ALWAYS);
-            m_renderDevice->m_basicShader->SetMatrix(SHADER_matWorldViewProj, g_pplayer->m_vrDevice->GetVisibilityMaskProjs(), 2);
-            m_renderDevice->m_basicShader->SetTechnique(SHADER_TECHNIQUE_vr_mask);
-            m_renderDevice->DrawMesh(m_renderDevice->m_basicShader, false, pos, 0, mask, RenderDevice::TRIANGLELIST, 0, mask->m_ib->m_count);
-            UpdateBasicShaderMatrix();
-         }
-      }
-      #endif
    }
    #ifdef ENABLE_BGFX
    else if (GetMSAABackBufferTexture()->IsMSAA())
@@ -3010,11 +2828,7 @@ void Renderer::RenderFrame()
    const bool hasSharpenPass = m_sharpen != 0;
    const bool hasUpscalerPass = m_renderWidth < GetBackBufferTexture()->GetWidth();
    // OpenXR directly renders to the XR render target view without any postprocess needs
-   #ifdef ENABLE_XR
-   const bool hasStereoPass = m_stereo3Denabled && (m_stereo3D != STEREO_OFF) && (m_stereo3D != STEREO_VR);
-   #else
    const bool hasStereoPass = m_stereo3Denabled && (m_stereo3D != STEREO_OFF);
-   #endif
 
    // Perform color grade LUT / dither / tonemapping, also applying bloom and AO
    RenderTarget* const tonemapRT
@@ -3036,9 +2850,6 @@ void Renderer::RenderFrame()
    // If using 3D TV stereo mode, render LiveUI before stereo as it must be duplicated per view to be correct
    // For other modes, render UI after all other steps (otherwise it would break the calibration process for stereo anaglyph, and breaks XR passthrough color keying)
    const bool uiBeforeStero = false
-#ifdef ENABLE_VR
-      || m_stereo3D == STEREO_VR
-#endif
       || m_stereo3D == STEREO_SBS || m_stereo3D == STEREO_INT || m_stereo3D == STEREO_TB || m_stereo3D == STEREO_FLIPPED_INT;
    if (uiBeforeStero)
    {

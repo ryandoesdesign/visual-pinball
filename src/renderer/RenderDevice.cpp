@@ -352,16 +352,6 @@ void RenderDevice::RenderThread(RenderDevice* rd, bgfx::Init init)
    // If using OpenXR, we need to create a graphics layer adapted to OpenXR requirements
    if (g_pplayer->IsVR())
    {
-#ifdef ENABLE_XR
-      assert((init.resolution.reset & BGFX_RESET_VSYNC) == 0); // Display VSync must be disabled as we are synced by OpenXR on the headset display
-      init.type = g_pplayer->m_vrDevice->GetGraphicContextType();
-      init.platformData.context = g_pplayer->m_vrDevice->GetGraphicContext();
-      assert(init.platformData.context != nullptr);
-      // For the time being, we do not support having a desktop swapchain along the headset swapchain under Vulkan, so we run BGFX in headless mode
-      // Note that this is needed for native VR (running directly on the headset)
-      if (init.type == bgfx::RendererType::Vulkan)
-         init.platformData.nwh = nullptr;
-#endif
    }
 
    // BGFX default behavior is to set its 'API' thread (the one where bgfx API calls are allowed)
@@ -453,10 +443,6 @@ void RenderDevice::RenderThread(RenderDevice* rd, bgfx::Init init)
 
    if (g_pplayer->IsVR())
    {
-#ifdef ENABLE_XR
-      g_pplayer->m_vrDevice->CreateSession();
-      rd->m_framePending = true; // Delay first frame preparation
-#endif
    }
    else
    {
@@ -471,11 +457,6 @@ void RenderDevice::RenderThread(RenderDevice* rd, bgfx::Init init)
 
    std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
-#ifdef ENABLE_XR
-   if (g_pplayer->m_vrDevice)
-      rd->BGFXOpenXRRenderLoop(init);
-   else
-#endif
       rd->BGFXDesktopRenderLoop(init);
 
    // Wait until main thread has released all native resources
@@ -484,75 +465,6 @@ void RenderDevice::RenderThread(RenderDevice* rd, bgfx::Init init)
    rd->m_renderDeviceAlive = true;
 }
 
-#ifdef ENABLE_XR
-void RenderDevice::BGFXOpenXRRenderLoop(const bgfx::Init& init)
-{
-   // OpenXR renderloop, synchronized on headset (using xrWaitFrame), with game logic preparing frames when headset request them
-   m_frameIndex = 0;
-   while (m_renderDeviceAlive)
-   {
-      // Process OpenXR events (headset status, ...)
-      g_pplayer->m_vrDevice->PollEvents();
-
-      // Let OpenXR throttle rendering, preparing frame on demand when view positions are acquired and predicted display time is defined
-      g_pplayer->m_vrDevice->RenderFrame(this,
-         [this](RenderTarget* vrRenderTarget)
-         {
-            // FIXME No VR target, we should still render to the preview window
-            if (vrRenderTarget == nullptr)
-               return;
-
-            // Set acquired swapchain images as render target, request a new renderframe from GameLogic thread, and wait for it
-            BEGIN_SPAN(tagSpanFF, "vpxWaitFrame")
-            g_pplayer->m_renderProfiler->EnterProfileSection(FrameProfiler::PROFILE_RENDER_WAIT);
-            m_outputWnd[0]->SetBackBuffer(vrRenderTarget, false);
-            m_framePending = false;
-            m_frameReadySem.acquire();
-            m_outputWnd[0]->SetBackBuffer(nullptr, false); // as the vrRenderTarget is not valid outside of this scope
-            g_pplayer->m_renderProfiler->ExitProfileSection();
-            END_SPAN(tagSpanFF)
-            if (!m_framePending)
-            {
-               // Block rendering until we will acquire swapchain again
-               m_framePending = true;
-               return;
-            }
-
-            // Submit frame to BGFX (which contains all rendering commands, for VR headset but also other windows like preview,...)
-            {
-               BEGIN_SPAN(tagSpan, "VPX->BGFX")
-               std::lock_guard lock(m_frameMutex);
-               g_pplayer->m_renderProfiler->NewFrame(g_pplayer->m_time_msec);
-               g_pplayer->m_renderProfiler->EnterProfileSection(FrameProfiler::PROFILE_RENDER_SUBMIT);
-               SubmitRenderFrame();
-               g_pplayer->m_vrDevice->UpdateVisibilityMask(this);
-               g_pplayer->m_renderProfiler->ExitProfileSection();
-               END_SPAN(tagSpan)
-            }
-
-            // Request BGFX to submit to GPU (calls bgfx::frame())
-            BEGIN_SPAN(tagSpan, "BGFX->GPU")
-            g_pplayer->m_renderProfiler->EnterProfileSection(FrameProfiler::PROFILE_RENDER_FLIP);
-            Flip();
-            m_frameIndex++;
-            if (m_screenshotFrameDelay > 0)
-            {
-               m_screenshotFrameDelay--;
-               if (m_screenshotFrameDelay == 0)
-                  for (size_t i = 0; i < m_screenshotWindow.size(); i++)
-                     bgfx::requestScreenShot(m_screenshotWindow[i]->GetBackBuffer()->GetCoreFrameBuffer(), m_screenshotFilename[i].string().c_str());
-            }
-            const bgfx::Stats* stats = bgfx::getStats();
-            const uint64_t bgfxSubmit = (stats->cpuTimeEnd - stats->cpuTimeBegin) * 1000000ull / stats->cpuTimerFreq;
-            g_pplayer->m_logicProfiler.OnPresented(usec() - bgfxSubmit);
-            g_pplayer->m_renderProfiler->ExitProfileSection();
-            g_pplayer->m_renderProfiler->AdjustBGFXSubmit(static_cast<uint32_t>(bgfxSubmit));
-            END_SPAN(tagSpan)
-         });
-   }
-   g_pplayer->m_vrDevice->ReleaseSession();
-}
-#endif
 
 void RenderDevice::BGFXDesktopRenderLoop(const bgfx::Init& init)
 {
@@ -1645,9 +1557,7 @@ RenderDevice::RenderDevice(
    // Initialize uniform to default value
    m_basicShader->SetVector(SHADER_staticColor_Alpha, 1.0f, 1.0f, 1.0f, 1.0f); // No tinting
    // FIXME XR
-   #ifndef ENABLE_XR
    m_DMDShader->SetFloat(SHADER_alphaTestValue, 1.0f); // No alpha clipping
-   #endif
 
    #if !defined(__OPENGLES__)
       // Always load the (small) SMAA textures since SMAA can be toggled at runtime through the live UI

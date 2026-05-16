@@ -157,12 +157,6 @@ RenderTarget::RenderTarget(RenderDevice* const rd, const SurfaceType type, const
    else if (with_depth)
    {
       m_depthFormat = bgfx::TextureFormat::D32F;
-      #ifdef ENABLE_XR
-      // For OpenXR, we need to be able to copy from the render depth buffer to the swapchain's depth buffer.
-      // TODO we should use directly the vr's swapchain depth buffer instead of creating a compatible one to avoid the blit
-      if (g_pplayer->m_vrDevice)
-         m_depthFormat = g_pplayer->m_vrDevice->GetDepthFormat();
-      #endif
       if (IsMSAA())
       {
          m_msaaResolveDepthTex = bgfx::createTexture2D(m_width, m_height, false, m_nLayers, m_depthFormat, texFlags | BGFX_TEXTURE_MSAA_SAMPLE);

@@ -115,15 +115,6 @@ void RenderCommand::Execute(const int nInstances, const bool log)
       if (log) {
          PLOGI << "> Submit VR";
       }
-      #if defined(ENABLE_VR)
-         if (g_pplayer->m_vrDevice && g_pplayer->m_vrDevice->IsVRReady())
-         {
-            g_pplayer->m_logicProfiler.EnterProfileSection(FrameProfiler::PROFILE_RENDER_FLIP); 
-            g_pplayer->m_vrDevice->SubmitFrame(g_pplayer->m_renderer->GetOffscreenVR(0)->GetColorSampler(), g_pplayer->m_renderer->GetOffscreenVR(1)->GetColorSampler());
-            g_pplayer->m_logicProfiler.OnPresented(usec());
-            g_pplayer->m_logicProfiler.ExitProfileSection();
-         }
-      #endif
       break;
    }
 
@@ -288,20 +279,6 @@ void RenderCommand::Execute(const int nInstances, const bool log)
             #elif defined(ENABLE_OPENGL)
             const int indexOffset = m_mb->m_ib->GetOffset() + m_startIndex * m_mb->m_ib->m_sizePerIndex;
             const GLenum indexType = m_mb->m_ib->m_indexFormat == IndexBuffer::FMT_INDEX16 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT;
-            #if defined(DEBUG) && 0
-            // Track invalid vertex memory reference. Very slow, only for debugging memory access exception in OpenGL
-            uint8_t* tmp = new uint8_t[m_indicesCount * m_mb->m_ib->m_sizePerIndex];
-            uint16_t* tmp16 = (uint16_t*)tmp;
-            uint32_t* tmp32 = (uint32_t*)tmp;
-            glGetNamedBufferSubData(m_mb->m_ib->GetBuffer(), indexOffset, m_indicesCount * m_mb->m_ib->m_sizePerIndex, tmp);
-            //assert(m_mb->m_vb->GetVertexOffset() + m_mb->m_vb->m_count <= m_mb->m_vb->GetSharedBuffer()->GetCount());
-            for (unsigned int i = 0; i < m_indicesCount; i++)
-            {
-               unsigned int idx = m_mb->m_ib->m_indexFormat == IndexBuffer::FMT_INDEX16 ? tmp16[i] : tmp32[i];
-               assert((m_mb->m_vb->GetVertexOffset() <= vertexOffset + idx) && (vertexOffset + idx <= m_mb->m_vb->GetVertexOffset() + m_mb->m_vb->m_count));
-            }
-            delete[] tmp;
-            #endif
             if (vertexOffset == 0)
             {
                if (nInstances > 1)

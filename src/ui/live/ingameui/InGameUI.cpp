@@ -22,7 +22,6 @@
 #include "TableMiscPage.h"
 #include "TableOptionsPage.h"
 #include "TableRulesPage.h"
-#include "VRSettingsPage.h"
 #include "SystemInfoPage.h"
 #include "parts/ball.h"
 
@@ -45,7 +44,6 @@ InGameUI::InGameUI(LiveUI &liveUI)
    AddPage("settings/plunger"s, []() { return std::make_unique<PlungerSettingsPage>(); });
    AddPage("settings/pov"s, []() { return std::make_unique<PointOfViewSettingsPage>(); });
    AddPage("settings/stereo"s, []() { return std::make_unique<StereoSettingsPage>(); });
-   AddPage("settings/vr"s, []() { return std::make_unique<VRSettingsPage>(); });
    AddPage("table/general"s, []() { return std::make_unique<TableMiscPage>(); });
    AddPage("table/options"s, []() { return std::make_unique<TableOptionsPage>(); });
    AddPage("table/rules"s, []() { return std::make_unique<TableRulesPage>(); });

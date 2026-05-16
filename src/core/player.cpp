@@ -211,39 +211,6 @@ Player::Player(PinTable *const table, const PlayMode playMode)
 #endif
 
    bool useVR = false;
-   #if defined(ENABLE_VR) || defined(ENABLE_XR)
-      const int vrDetectionMode = m_ptable->m_settings.GetPlayerVR_AskToTurnOn();
-      #if defined(ENABLE_XR)
-         if (vrDetectionMode != 2) // 2 is VR off (0 is VR on, 1 is autodetect)
-         {
-            m_vrDevice = new VRDevice(m_ptable->m_settings);
-            if (m_vrDevice->IsOpenXRReady())
-            {
-               m_vrDevice->SetupHMD();
-               if (m_vrDevice->IsOpenXRHMDReady())
-                  useVR = true;
-               else if (vrDetectionMode == 0) // 0 is VR on
-               {
-                  while (!m_vrDevice->IsOpenXRHMDReady() && (MessageBox(nullptr, "Retry connection ?", "Connection to VR headset failed", MB_YESNO) == IDYES))
-                     m_vrDevice->SetupHMD();
-                  useVR = m_vrDevice->IsOpenXRHMDReady();
-               }
-            }
-            else if (vrDetectionMode == 0) // 0 is VR on, tell the user that the choice will not be fullfilled
-               ShowError("VR mode activated but OpenXR initialization failed.");
-            if (!useVR)
-            {
-               delete m_vrDevice;
-               m_vrDevice = nullptr;
-            }
-         }
-      #elif defined(ENABLE_VR)
-         useVR = vrDetectionMode == 2 /* VR Disabled */  ? false : VRDevice::IsVRinstalled();
-         if (useVR && (vrDetectionMode == 1 /* VR Autodetect => ask to turn on and adapt accordingly */) && !VRDevice::IsVRturnedOn())
-            useVR = MessageBox(nullptr, "VR headset detected but SteamVR is not running.\n\nTurn VR on?", "VR Headset Detected", MB_YESNO) == IDYES;
-         m_vrDevice = useVR ? new VRDevice(m_ptable->m_settings) : nullptr;
-      #endif
-   #endif
 
    #ifdef ENABLE_DX9
    const StereoMode stereo3D = STEREO_OFF;
@@ -956,10 +923,6 @@ Player::~Player()
    m_changed_vht.clear();
 
 
-   #ifdef ENABLE_XR
-   if (m_vrDevice)
-      m_vrDevice->DiscardVisibilityMask();
-   #endif
    delete m_renderer;
    m_renderer = nullptr;
    LockForegroundWindow(false);

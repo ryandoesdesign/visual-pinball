@@ -3,7 +3,6 @@
 #include "core/stdafx.h"
 
 #include "SensorSetupPage.h"
-#include "renderer/VRDevice.h"
 
 namespace VPX::InGameUI
 {
