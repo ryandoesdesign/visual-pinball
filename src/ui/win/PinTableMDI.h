@@ -2,9 +2,6 @@
 
 #pragma once
 
-#ifndef __STANDALONE__
-#include <wxx_mdi.h>
-#endif
 
 #include "PinTableWnd.h"
 
@@ -14,9 +11,6 @@ class PinTableMDI final : public CMDIChild
 public:
    PinTableMDI(WinEditor *vpinball);
    ~PinTableMDI()
-   #ifndef __STANDALONE__
-   override
-   #endif
    ;
    PinTableWnd* GetTableWnd() const { return m_tableWnd.get(); }
    CComObject<PinTable> *GetTable() const { return m_tableWnd->m_table; }

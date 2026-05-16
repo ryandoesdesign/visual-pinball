@@ -17,9 +17,6 @@ public:
 
    ISelect *HitTest(const int x, const int y);
 
-   #ifndef __STANDALONE__
-   void SetMouseCursor();
-   #endif
    void SetCaption(const string &caption);
    int ShowMessageBox(const char *text) const;
 
@@ -57,31 +54,8 @@ public:
    ViewSetupID m_currentBackglassMode = ViewSetupID::BG_DESKTOP; // POV shown in the UI (not persisted)
 
 protected:
-#ifndef __STANDALONE__
-   // Overriden from CWnd
-   void OnInitialUpdate() final;
-   BOOL OnEraseBkgnd(CDC &dc) final;
-   LRESULT WndProc(UINT uMsg, WPARAM wParam, LPARAM lParam) final;
-#endif
 
 private:
-#ifndef __STANDALONE__
-   void OnLeftDoubleClick(int x, int y);
-   void OnLeftButtonDown(const short x, const short y);
-   void DoLeftButtonDown(int x, int y, bool zoomIn);
-   void OnLeftButtonUp(int x, int y);
-   void OnRightButtonDown(int x, int y);
-   void OnRightButtonUp(int x, int y);
-   void OnMouseMove(const int x, const int y);
-   void OnMouseWheel(const short x, const short y, const short zDelta);
-   void OnKeyDown(int key);
-   void OnSize();
-   void DoContextMenu(int x, int y, const int menuid, ISelect *psel);
-
-   void Paint(HDC hdc);
-   void Render3DProjection(Sur *const psur);
-   void UIRenderPass2(Sur *const psur);
-#endif
 
    WinEditor *const m_vpxEditor;
    PinTableMDI *m_mdiTable = nullptr;

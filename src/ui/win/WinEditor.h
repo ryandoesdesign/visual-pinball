@@ -6,26 +6,6 @@
 
 #include "core/Settings.h"
 
-#ifndef __STANDALONE__
-   #include <wxx_docking.h>
-   #include <wxx_dockframe.h>
-   #include "dialogs/ImageDialog.h"
-   #include "dialogs/SoundDialog.h"
-   #include "dialogs/EditorOptionsDialog.h"
-   #include "dialogs/CollectionManagerDialog.h"
-   #include "dialogs/PhysicsOptionsDialog.h"
-   #include "dialogs/RenderProbeDialog.h"
-   #include "dialogs/TableInfoDialog.h"
-   #include "dialogs/DimensionDialog.h"
-   #include "dialogs/MaterialDialog.h"
-   #include "dialogs/AboutDialog.h"
-   #include "dialogs/ToolbarDialog.h"
-   #include "dialogs/LayersListDialog.h"
-   #include "dialogs/NotesDialog.h"
-   #include "properties/PropertyDialog.h"
-
-   #define OVERRIDE override
-#else
    class ImageDialog final { };
    class SoundDialog final { };
    class EditorOptionsDialog final { };
@@ -39,7 +19,6 @@
    class ToolbarDialog final { };
    class NotesDialog final { };
    #define OVERRIDE
-#endif
 
 class PinTable;
 class PinTableMDI;
@@ -157,9 +136,6 @@ public:
        }
     }
 
-#ifndef __STANDALONE__
-    ::SendMessage(m_hwndStatusBar, SB_SETTEXT, 5 | 0, (size_t)textBuf.c_str());
-#endif
    }
 
    bool OpenFileDialog(const string& initDir, vector<string>& filename, const char* const fileFilter, const char* const defaultExt, const DWORD flags, const string& windowTitle = string());
@@ -177,9 +153,6 @@ public:
       m_dockNotes = nullptr;
    }
    void CreateDocker();
-   #ifndef __STANDALONE__
-   LayersListDialog* GetLayersListDialog() { return GetLayersDocker()->GetContainLayers()->GetLayersDialog(); }
-   #endif
    bool IsClosing() const { return m_closing; }
 
    ULONG m_cref;
@@ -234,10 +207,6 @@ protected:
    LRESULT WndProc(UINT uMsg, WPARAM wParam, LPARAM lParam) override;
    LRESULT OnMDIActivated(UINT msg, WPARAM wparam, LPARAM lparam) OVERRIDE;
    LRESULT OnMDIDestroyed(UINT msg, WPARAM wparam, LPARAM lparam) OVERRIDE;
-#ifndef __STANDALONE__
-   BOOL PreTranslateMessage(MSG& msg) override;
-   DockPtr NewDockerFromID(int id) override;
-#endif
 
 private:
    const HINSTANCE m_instance;

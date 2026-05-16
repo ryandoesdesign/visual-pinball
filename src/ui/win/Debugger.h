@@ -2,9 +2,6 @@
 
 #pragma once
 
-#ifndef __STANDALONE__
-#include <wxx_stdcontrols.h> // Add CButton, CEdit, CListBox
-#endif
 
 class DebuggerDialog final : public CDialog
 {

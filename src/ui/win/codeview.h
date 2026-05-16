@@ -5,18 +5,9 @@
 #include "core/ScriptInterpreter.h"
 #include "utils/vectorsort.h"
 
-#ifndef __STANDALONE__
-#include <commdlg.h>
-#include "dialogs/ScriptErrorDialog.h"
-#include "scintilla.h"
-#endif
 
 #ifndef OVERRIDE
-#ifndef __STANDALONE__
-   #define OVERRIDE override
-#else
    #define OVERRIDE
-#endif
 #endif
 
 #define MAX_FIND_LENGTH 81 // from MS docs: The buffer should be at least 80 characters long (for find/replace)
@@ -66,9 +57,6 @@ public:
 
    void UpdateScinFromPrefs();
 
-#ifndef __STANDALONE__
-   void MarginClick(const Sci_Position position, const int modifiers);
-#endif
 
    void AddToDebugOutput(const string& szText);
 
@@ -114,9 +102,6 @@ public:
    int m_dwellDisplayTime;
 
    fi_vector<UserData> m_pageConstructsDict;
-#ifndef __STANDALONE__
-   Sci_TextRange m_wordUnderCaret;
-#endif
 
    HWND m_hwndMain = nullptr;
    HWND m_hwndScintilla = nullptr;
@@ -186,9 +171,6 @@ private:
    char szReplaceString[MAX_FIND_LENGTH];
    char szCaretTextBuff[MAX_FIND_LENGTH];
 
-#ifndef __STANDALONE__
-   UINT m_findMsgString; // Windows message for the FindText dialog
-#endif
 
    string m_validChars;
 
