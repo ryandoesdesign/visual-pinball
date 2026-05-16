@@ -3,9 +3,9 @@
 #pragma once
 
 #include "Shader.h"
+#include "RenderDeviceState.h"
 
 class RenderDevice;
-class RenderDeviceState;
 class RenderPass;
 class RenderCommand;
 

@@ -50,7 +50,7 @@ void OnSignalHandler(int signum)
         } else {
           NSAlert* alert = [[NSAlert alloc] init];
           [alert setMessageText:
-                     @"VPinballX_GL\n\nYou must choose a VPX table to start, run using the command line "
+                     @"VPinballX\n\nYou must choose a VPX table to start, run using the command line "
                      @" to set arguments, or\ndouble click a \".vpx\" file."];
           [alert addButtonWithTitle:@"OK"];
           [alert setAlertStyle:NSAlertStyleWarning];
@@ -70,22 +70,23 @@ void OnSignalHandler(int signum)
   exit(status);
 }
 
-- (BOOL)application:(NSApplication*)sender openFile:(NSString*)filename
+- (void)application:(NSApplication*)application openURLs:(NSArray<NSURL*>*)urls
 {
-  if (g_argc == 1
-      && (filename && filename.length > 0 &&
-          [[filename.lowercaseString pathExtension] isEqualToString:@"vpx"])) {
-    char** new_argv = (char**)malloc(3 * sizeof(char*));
+  if (g_argc == 1 && urls.count > 0) {
+    NSURL* fileURL = urls.firstObject;
+    NSString* path = fileURL.path;
+    if (path.length > 0 && [path.lowercaseString.pathExtension isEqualToString:@"vpx"]) {
+      char** new_argv = (char**)malloc(3 * sizeof(char*));
 
-    new_argv[0] = g_argv[0];
-    new_argv[1] = strdup("-play");
-    new_argv[2] = strdup([filename UTF8String]);
+      new_argv[0] = g_argv[0];
+      new_argv[1] = strdup("-play");
+      new_argv[2] = strdup([path UTF8String]);
 
-    g_argc = 3;
-    g_argv = new_argv;
+      g_argc = 3;
+      g_argv = new_argv;
+    }
   }
   [self makeWindowExit];
-  return YES;
 }
 
 @end

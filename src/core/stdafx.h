@@ -2,40 +2,16 @@
 
 #pragma once
 
-// Disable Warning C4635: XML document comment target: badly-formed XML
-#pragma warning(disable : 4635)
-
-// static analysis warnings that are too strict for our use cases
-#pragma warning(disable : 26481)
-#pragma warning(disable : 26482)
-#pragma warning(disable : 26485)
-#pragma warning(disable : 26440)
-#pragma warning(disable : 26446)
-
-//#define DISABLE_FORCE_NVIDIA_OPTIMUS // do not enable NVIDIA Optimus cards (on Laptops, etc) by default
-
-//#define DISABLE_FORCE_AMD_HIGHPERF // do not enable AMD high performance device (on Laptops, etc) by default
-
 // Needed by ImPlot when using ImGUI
 #define IMGUI_DEFINE_MATH_OPERATORS
 
-// Needed to avoid duplicate definitions between ImGui and GLAD
-#define IMGUI_IMPL_OPENGL_LOADER_CUSTOM
-
-
 #define COMPRESS_MESHES // uses miniz for compressing the meshes
 
-
-//#define _CRTDBG_MAP_ALLOC
 
 //#define DEBUG_NUDGE // debug new nudge code
 
 //#define DEBUG_NO_SOUND
 //#define DEBUG_REFCOUNT_TRIGGER
-
-#ifdef ENABLE_DX9
- //#define ENABLE_TRACE // enables all TRACE_FUNCTION() calls to use D3DPERF_Begin/EndEvent
-#endif
 
 #define EDITOR_BG_WIDTH    1000
 #define EDITOR_BG_HEIGHT   750
@@ -69,9 +45,6 @@
 #define ACCURATETIMERS          // if undefd, timers will only be triggered as often as frames are rendered (e.g. they can fall behind)
 #define MAX_TIMERS_MSEC_OVERALL 5 // amount of msecs that all timers combined can take per frame (e.g. they can fall behind, if set to < somelargevalue)
 
-//#define PLAYBACK              // bitrotted, also how to record the playback to c:\badlog.txt ?? via LOG ??
-//#define LOG                   // bitrotted, will record stuff into c:\log.txt
-
 //#define DEBUGPHYSICS          // enables detailed physics/collision handling output for the 'F11' stats/debug texts
 
 #if defined(_DEBUG)
@@ -90,40 +63,4 @@
 
 #define NUM_ASSIGN_LAYERS       20
 
-
-#if !defined(AFX_STDAFX_H__35BEBBA5_0A4C_4321_A65C_AFFE89589F15__INCLUDED_)
-#define AFX_STDAFX_H__35BEBBA5_0A4C_4321_A65C_AFFE89589F15__INCLUDED_
-
-#define _WINSOCKAPI_ // workaround some issue where windows.h is included before winsock2.h in some of the various includes
-
-// Attempt to speed up STL which is very CPU costly, maybe we should look into using EASTL instead? http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2007/n2271.html https://github.com/electronicarts/EASTL
-// Disabled as this causes inconsistencies when linking but still STL debug is very CPU heavy
-//#if !defined(ENABLE_BGFX) || !defined(_DEBUG)
-//#define _SECURE_SCL 0
-//#define _HAS_ITERATOR_DEBUGGING 0
-//#endif
-
-#define STRICT
-
-#ifndef _WIN32_WINNT
-  // Windows Vista _WIN32_WINNT_VISTA
-  #define _WIN32_WINNT 0x0600
-  #define WINVER _WIN32_WINNT
-#endif
-
-
-#define _ATL_APARTMENT_THREADED
-
-
-//#include <vld.h>
-#ifdef _CRTDBG_MAP_ALLOC
- #include <crtdbg.h>
-#endif
-
 #include "main.h"
-
-
-//{{AFX_INSERT_LOCATION}}
-// Microsoft Visual C++ will insert additional declarations immediately before the previous line.
-
-#endif // !defined(AFX_STDAFX_H__35BEBBA5_0A4C_4321_A65C_AFFE89589F15__INCLUDED)

@@ -13,54 +13,24 @@
 #include "VertexBuffer.h"
 #include "MeshBuffer.h"
 #include "TextureManager.h"
+#include "RenderDeviceState.h"
 #include "RenderFrame.h"
 #include "RenderPass.h"
 #include "Window.h"
 
 #include <SDL3/SDL.h>
 
-#if defined(ENABLE_BGFX)
 #include <thread>
 #include <mutex>
 #include <semaphore>
-#endif
 
-
-#if defined(ENABLE_DX9)
-#define CHECKNVAPI(s) { NvAPI_Status hr = (s); if (hr != NVAPI_OK) { NvAPI_ShortString ss; NvAPI_GetErrorMessage(hr,ss); ShowError(ss); } }
-#endif
+#define CHECKD3D(s) { s; }
 
 void ReportFatalError(const HRESULT hr, const char *file, const int line);
 void ReportError(const string& errorText, const HRESULT hr, const char *file, const int line);
 
-#if defined(ENABLE_BGFX)
-#define CHECKD3D(s) { s; } 
-#elif defined(ENABLE_OPENGL)
-#define CHECKD3D(s) { s; }
-#elif defined(ENABLE_DX9)
-#define CHECKD3D(s) { const HRESULT hrTmp = (s); if (FAILED(hrTmp)) ReportFatalError(hrTmp, __FILE__, __LINE__); }
-#endif
-
 class Shader;
 class ModelViewProj;
-
-class RenderDeviceState final
-{
-public:
-   RenderDeviceState(RenderDevice* rd);
-   ~RenderDeviceState();
-
-   const RenderDevice* m_rd;
-   ShaderState* const m_uiShaderState;
-   ShaderState* const m_basicShaderState;
-   ShaderState* const m_DMDShaderState;
-   ShaderState* const m_FBShaderState;
-   ShaderState* const m_flasherShaderState;
-   ShaderState* const m_lightShaderState;
-   ShaderState* const m_ballShaderState;
-   ShaderState* const m_stereoShaderState;
-   RenderState m_renderState;
-};
 
 class RenderDevice final
 {
@@ -71,36 +41,14 @@ public:
    void AddWindow(VPX::Window* wnd);
    void RemoveWindow(VPX::Window* wnd);
 
-   #if defined(ENABLE_BGFX)
-      enum PrimitiveTypes
-      {
-         TRIANGLESTRIP,
-         TRIANGLELIST,
-         POINTLIST,
-         LINELIST,
-         LINESTRIP
-      };
-
-   #elif defined(ENABLE_OPENGL)
-      enum PrimitiveTypes
-      {
-         TRIANGLESTRIP = GL_TRIANGLE_STRIP,
-         TRIANGLELIST = GL_TRIANGLES,
-         POINTLIST = GL_POINTS,
-         LINELIST = GL_LINES,
-         LINESTRIP = GL_LINE_STRIP
-      };
-
-   #elif defined(ENABLE_DX9)
-      enum PrimitiveTypes
-      {
-         TRIANGLESTRIP = D3DPT_TRIANGLESTRIP,
-         TRIANGLELIST = D3DPT_TRIANGLELIST,
-         POINTLIST = D3DPT_POINTLIST,
-         LINELIST = D3DPT_LINELIST,
-         LINESTRIP = D3DPT_LINESTRIP
-      };
-   #endif
+   enum PrimitiveTypes
+   {
+      TRIANGLESTRIP,
+      TRIANGLELIST,
+      POINTLIST,
+      LINELIST,
+      LINESTRIP
+   };
 
    ////////////////////////////////////////////////////////////////////////////////////////////////
    // (retained) RenderFrame API: Following calls will enqueue rendercommand to the renderframe.
@@ -152,13 +100,7 @@ public:
    bool DepthBufferReadBackAvailable() const;
    bool SupportLayeredRendering() const
    {
-      #if defined(ENABLE_BGFX)
       return bgfx::getCaps()->supported & (BGFX_CAPS_INSTANCING | BGFX_CAPS_TEXTURE_2D_ARRAY | BGFX_CAPS_VIEWPORT_LAYER_ARRAY);
-      #elif defined(ENABLE_OPENGL)
-      return true;
-      #elif defined(ENABLE_DX9)
-      return false;
-      #endif
    }
 
    std::shared_ptr<MeshBuffer> GetQuadMeshBuffer() const { return m_quadMeshBuffer; }
@@ -251,7 +193,6 @@ private:
 
    uint64_t m_presentTimestampReference = 0;
 
-#if defined(ENABLE_BGFX)
 public:
    void NextView();
    void ResetActiveView();
@@ -270,11 +211,6 @@ public:
    std::vector<bgfx::ProgramHandle> m_mipmapPrograms;
 
    uint64_t m_lastGPUFrameLength = 0;
-
-#if BX_PLATFORM_WINDOWS
-   void OnInputSampled();
-   struct PresentMonProvider* m_presentMonProvider = nullptr;
-#endif
 
 private:
    void SubmitAndFlipFrame(bool present);
@@ -314,53 +250,4 @@ private:
    private:
       RenderDevice& m_rd;
    } m_bgfxCallback;
-
-#elif defined(ENABLE_OPENGL)
-public:
-   int getGLVersion() const { return m_GLversion; }
-   vector<MeshBuffer::SharedVAO*> m_sharedVAOs;
-   vector<Sampler::SamplerBinding*> m_samplerBindings;
-   GLuint m_curVAO = 0;
-   SDL_GLContext m_sdl_context = nullptr;
-   std::shared_ptr<MeshBuffer> m_quadPNTDynMeshBuffer; // internal vb for rendering dynamic quads (position/normal/texture)
-   std::shared_ptr<MeshBuffer> m_quadPTDynMeshBuffer; // internal vb for rendering dynamic quads (position/texture)
-
-private:
-   GLfloat m_maxaniso;
-   int m_GLversion;
-   static GLuint m_samplerStateCache[3 * 3 * 5];
-
-   void CaptureGLScreenshot();
-
-#elif defined(ENABLE_DX9)
-public:
-   IDirect3DDevice9* GetCoreDevice() const { return m_pD3DDevice; }
-   IDirect3DDevice9Ex* GetCoreDeviceEx() const { return m_pD3DDeviceEx; }
-
-   IDirect3DVertexBuffer9* m_curVertexBuffer = nullptr;
-   IDirect3DIndexBuffer9* m_curIndexBuffer = nullptr;
-   IDirect3DVertexDeclaration9* m_currentVertexDeclaration = nullptr;
-   IDirect3DVertexDeclaration9* m_pVertexTexelDeclaration = nullptr;
-   IDirect3DVertexDeclaration9* m_pVertexNormalTexelDeclaration = nullptr;
-
-   bool m_autogen_mipmap;
-   bool m_useNvidiaApi;
-   bool m_INTZ_support;
-   bool NVAPIinit;
-
-private:
-   IDirect3D9Ex* m_pD3DEx;
-   IDirect3DDevice9Ex* m_pD3DDeviceEx;
-   IDirect3D9* m_pD3D;
-   IDirect3DDevice9* m_pD3DDevice;
-
-   void CaptureDX9Screenshot();
-
-   DWORD m_maxaniso;
-   bool m_mag_aniso;
-   static constexpr uint32_t TEXTURESET_STATE_CACHE_SIZE = 32;
-   SamplerFilter m_bound_filter[TEXTURESET_STATE_CACHE_SIZE];
-   SamplerAddressMode m_bound_clampu[TEXTURESET_STATE_CACHE_SIZE];
-   SamplerAddressMode m_bound_clampv[TEXTURESET_STATE_CACHE_SIZE];
-#endif
 };

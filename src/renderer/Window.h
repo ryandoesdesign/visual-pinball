@@ -82,10 +82,6 @@ public:
 
    SDL_Window* GetCore() const { return m_nwnd; }
 
-#ifdef _WIN32
-   HWND GetNativeHWND() const;
-#endif
-
    struct VideoMode
    {
       int width;

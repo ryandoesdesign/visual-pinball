@@ -39,6 +39,8 @@
     </array>
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.games</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>26.0</string>
     <key>NSHighResolutionCapable</key>
     <true/>
 </dict>

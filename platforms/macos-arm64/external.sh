@@ -48,7 +48,7 @@ if [ "${SDL3_EXPECTED_SHA}" != "${SDL3_FOUND_SHA}" ]; then
       -DSDL_TEST_LIBRARY=OFF \
       -DSDL_OPENGLES=OFF \
       -DCMAKE_OSX_ARCHITECTURES=arm64 \
-      -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 \
+      -DCMAKE_OSX_DEPLOYMENT_TARGET=26.0 \
       -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
       -B build
    cmake --build build -- -j${NUM_PROCS}
@@ -68,7 +68,7 @@ if [ "${SDL3_EXPECTED_SHA}" != "${SDL3_FOUND_SHA}" ]; then
       -DSDLIMAGE_WEBP=OFF \
       -DSDL3_DIR=../SDL/build \
       -DCMAKE_OSX_ARCHITECTURES=arm64 \
-      -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 \
+      -DCMAKE_OSX_DEPLOYMENT_TARGET=26.0 \
       -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
       -B build
    cmake --build build -- -j${NUM_PROCS}
@@ -86,7 +86,7 @@ if [ "${SDL3_EXPECTED_SHA}" != "${SDL3_FOUND_SHA}" ]; then
       -DSDLTTF_HARFBUZZ=ON \
       -DSDL3_DIR=../SDL/build \
       -DCMAKE_OSX_ARCHITECTURES=arm64 \
-      -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 \
+      -DCMAKE_OSX_DEPLOYMENT_TARGET=26.0 \
       -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
       -B build
    cmake --build build -- -j${NUM_PROCS}
@@ -157,7 +157,7 @@ if [ "${BGFX_EXPECTED_SHA}" != "${BGFX_FOUND_SHA}" ]; then
       -DBGFX_CONFIG_MULTITHREADED=ON \
       -DBGFX_CONFIG_MAX_FRAME_BUFFERS=256 \
       -DCMAKE_OSX_ARCHITECTURES=arm64 \
-      -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 \
+      -DCMAKE_OSX_DEPLOYMENT_TARGET=26.0 \
       -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
       -B build
    cmake --build build -- -j${NUM_PROCS}
