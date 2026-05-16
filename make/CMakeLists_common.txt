@@ -236,6 +236,8 @@ set(VPX_SOURCES
    src/renderer/ViewSetup.cpp
    src/renderer/ViewSetup.h
    src/renderer/RenderDeviceState.h
+   src/renderer/VRDevice.cpp
+   src/renderer/VRDevice.h
    src/renderer/Window.cpp
    src/renderer/Window.h
 
