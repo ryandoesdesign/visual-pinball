@@ -469,51 +469,6 @@ void Rubber::GetCentralCurve(vector<RenderVertex> &vv, const float _accuracy) co
    IHaveDragPoints::GetRgVertex(vv, true, accuracy);
 }
 
-#if 0
-float Rubber::GetSurfaceHeight(float x, float y) const
-{
-   vector<RenderVertex> vvertex;
-   GetCentralCurve(vvertex);
-
-   const int cvertex = (int)vvertex.size();
-
-   int iSeg;
-   Vertex2D vOut;
-   ClosestPointOnPolygon(vvertex, Vertex2D(x, y), vOut, iSeg, false);
-
-   // Go through vertices (including iSeg itself) counting control points until iSeg
-   float totallength = 0.f;
-   float startlength = 0.f;
-   float zheight = 0.f;
-
-   if (iSeg == -1)
-   {
-      return 0; // Object is not on ramp path
-   }
-
-   for (int i2 = 1; i2 < cvertex; i2++)
-   {
-      const float dx = vvertex[i2].x - vvertex[i2 - 1].x;
-      const float dy = vvertex[i2].y - vvertex[i2 - 1].y;
-      const float len = sqrtf(dx*dx + dy*dy);
-      if (i2 <= iSeg)
-         startlength += len;
-
-      totallength += len;
-   }
-
-   {
-      const float dx = vOut.x - vvertex[iSeg].x;
-      const float dy = vOut.y - vvertex[iSeg].y;
-      const float len = sqrtf(dx*dx + dy*dy);
-      startlength += len; // Add the distance the object is between the two closest polyline segments.  Matters mostly for straight edges.
-
-      zheight = (startlength / totallength) * m_d.m_height;
-   }
-
-   return zheight;
-}
-#endif
 
 
 #pragma region Physics
@@ -840,41 +795,6 @@ void Rubber::Load(IObjectReader& reader)
       m_d.m_hitHeight = m_d.m_height;
 }
 
-#ifndef __STANDALONE__
-void Rubber::DoCommand(int icmd, int x, int y)
-{
-   ISelect::DoCommand(icmd, x, y);
-
-   switch (icmd)
-   {
-   case ID_WALLMENU_FLIP:
-      FlipPointY(GetPointCenter());
-      break;
-
-   case ID_WALLMENU_MIRROR:
-      FlipPointX(GetPointCenter());
-      break;
-
-   case ID_WALLMENU_ROTATE:
-      VPX::WinUI::RotatePointsDialog(this);
-      break;
-
-   case ID_WALLMENU_SCALE:
-      VPX::WinUI::ScalePointsDialog(this);
-      break;
-
-   case ID_WALLMENU_TRANSLATE:
-      VPX::WinUI::TranslatePointsDialog(this);
-      break;
-
-   case ID_WALLMENU_ADDPOINT:
-   {
-      AddPoint(x, y, true);
-   }
-   break;
-   }
-}
-#endif
 
 void Rubber::FlipY(const Vertex2D& pvCenter)
 {

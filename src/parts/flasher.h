@@ -74,12 +74,10 @@ class Flasher :
    public IPerPropertyBrowsing // Ability to fill in dropdown in property browser
 {
 public:
-#ifdef __STANDALONE__
    STDMETHOD(GetIDsOfNames)(REFIID /*riid*/, LPOLESTR* rgszNames, UINT cNames, LCID lcid,DISPID* rgDispId);
    STDMETHOD(Invoke)(DISPID dispIdMember, REFIID /*riid*/, LCID lcid, WORD wFlags, DISPPARAMS* pDispParams, VARIANT* pVarResult, EXCEPINFO* pExcepInfo, UINT* puArgErr);
    STDMETHOD(GetDocumentation)(INT index, BSTR *pBstrName, BSTR *pBstrDocString, DWORD *pdwHelpContext, BSTR *pBstrHelpFile);
    HRESULT FireDispID(const DISPID dispid, DISPPARAMS * const pdispparams) final;
-#endif
    Flasher() { m_menuid = IDR_SURFACEMENU; }
    virtual ~Flasher();
 
@@ -123,9 +121,6 @@ public:
    Vertex2D GetCenter() const final { return m_d.m_vCenter; }
    void PutCenter(const Vertex2D& pv) final { m_d.m_vCenter = pv; }
 
-#ifndef __STANDALONE__
-   void DoCommand(int icmd, int x, int y) final;
-#endif
 
    void AddPoint(int x, int y, const bool smooth) final;
 

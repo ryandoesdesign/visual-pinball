@@ -17,10 +17,8 @@
 #include "utils/hash.h"
 #include "utils/vector.h"
 
-#ifdef __STANDALONE__
 #include <iostream>
 class Light;
-#endif
 
 #define VIEW_PLAYFIELD 1
 #define VIEW_BACKGLASS 2
@@ -69,12 +67,10 @@ class PinTable : public CComObjectRootEx<CComSingleThreadModel>,
                  public IPerPropertyBrowsing // Ability to fill in dropdown in property browser
 {
 public:
-#ifdef __STANDALONE__
    STDMETHOD(GetIDsOfNames)(REFIID /*riid*/, LPOLESTR* rgszNames, UINT cNames, LCID lcid,DISPID* rgDispId);
    STDMETHOD(Invoke)(DISPID dispIdMember, REFIID /*riid*/, LCID lcid, WORD wFlags, DISPPARAMS* pDispParams, VARIANT* pVarResult, EXCEPINFO* pExcepInfo, UINT* puArgErr);
    STDMETHOD(GetDocumentation)(INT index, BSTR *pBstrName, BSTR *pBstrDocString, DWORD *pdwHelpContext, BSTR *pBstrHelpFile);
    HRESULT FireDispID(const DISPID dispid, DISPPARAMS * const pdispparams) final;
-#endif
    STDMETHOD(get_BallFrontDecal)(/*[out, retval]*/ BSTR *pVal);
    STDMETHOD(put_BallFrontDecal)(/*[in]*/ BSTR newVal);
    // deprecated
@@ -378,9 +374,6 @@ public:
    void ListCollections(HWND hwndListView);
    int AddListCollection(HWND hwndListView, CComObject<Collection> *pcol);
 
-#ifndef __STANDALONE__
-   void DoCommand(int icmd, int x, int y) final;
-#endif
    bool FMutilSelLocked();
 
    // Expected by CodeViewer

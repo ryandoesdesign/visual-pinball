@@ -17,11 +17,9 @@ class DragPoint :
    public ISelect
 {
 public:
-#ifdef __STANDALONE__
    STDMETHOD(GetIDsOfNames)(REFIID /*riid*/, LPOLESTR* rgszNames, UINT cNames, LCID lcid,DISPID* rgDispId);
    STDMETHOD(Invoke)(DISPID dispIdMember, REFIID /*riid*/, LCID lcid, WORD wFlags, DISPPARAMS* pDispParams, VARIANT* pVarResult, EXCEPINFO* pExcepInfo, UINT* puArgErr);
    STDMETHOD(GetDocumentation)(INT index, BSTR *pBstrName, BSTR *pBstrDocString, DWORD *pdwHelpContext, BSTR *pBstrHelpFile);
-#endif
    DragPoint() { }
 
    void Init(IHaveDragPoints *pihdp, const float x, const float y, const float z, const bool smooth);
@@ -39,10 +37,6 @@ public:
    Vertex2D GetCenter() const final;
    void PutCenter(const Vertex2D &pv) final;
 
-#ifndef __STANDALONE__
-   void EditMenu(CMenu &menu) final;
-   void DoCommand(int icmd, int x, int y) final;
-#endif
 
    void SetSelectFormat(Sur *psur) final;
    void SetMultiSelectFormat(Sur *psur) final;

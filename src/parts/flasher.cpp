@@ -361,39 +361,6 @@ void Flasher::MoveOffset(const float dx, const float dy)
    m_dynamicVertexBufferRegenerate = true;
 }
 
-#ifndef __STANDALONE__
-void Flasher::DoCommand(int icmd, int x, int y)
-{
-   ISelect::DoCommand(icmd, x, y);
-
-   switch (icmd)
-   {
-   case ID_WALLMENU_FLIP:
-      FlipPointY(GetPointCenter());
-      break;
-
-   case ID_WALLMENU_MIRROR:
-      FlipPointX(GetPointCenter());
-      break;
-
-   case ID_WALLMENU_ROTATE:
-      VPX::WinUI::RotatePointsDialog(this);
-      break;
-
-   case ID_WALLMENU_SCALE:
-      VPX::WinUI::ScalePointsDialog(this);
-      break;
-
-   case ID_WALLMENU_TRANSLATE:
-      VPX::WinUI::TranslatePointsDialog(this);
-      break;
-
-   case ID_WALLMENU_ADDPOINT:
-      AddPoint(x, y, false);
-      break;
-   }
-}
-#endif
 
 void Flasher::AddPoint(int x, int y, const bool smooth)
 {
@@ -900,94 +867,6 @@ void Flasher::ResetVideoCap()
 // if PASSED a blank title then we treat this as STOP capture and free resources.
 STDMETHODIMP Flasher::put_VideoCapUpdate(BSTR cWinTitle)
 {
-#ifndef __STANDALONE__
-    if (m_videoCapWidth == 0 || m_videoCapHeight == 0) return S_FALSE; //safety.  VideoCapWidth/Height needs to be set prior to this call
-
-    // if PASS blank title then we treat as STOP capture and free resources.  Should be called on table1_exit
-    if (SysStringLen(cWinTitle) == 0 || cWinTitle[0] == L'\0')
-    {
-        ResetVideoCap();
-        return S_OK;
-    }
-
-    if (m_isVideoCap == false) {  // VideoCap has not started because no sourcewin found
-        m_videoCapHwnd = ::FindWindowW(nullptr, cWinTitle);
-        if (m_videoCapHwnd == nullptr)
-            return S_FALSE;
-
-        // source videocap found.  lets start!
-        GetClientRect(m_videoCapHwnd, &m_videoSourceRect);
-        ResetVideoCap();
-        try
-        {
-           m_videoCapTex = BaseTexture::Create(m_videoCapWidth, m_videoCapHeight, BaseTexture::SRGBA);
-        }
-        catch (...)
-        {
-           m_videoCapTex = nullptr;
-           return E_FAIL;
-        }
-    }
-
-    // Retrieve the handle to a display device context for the client area of the window.
-    const HDC hdcWindow = GetDC(m_videoCapHwnd);
-
-    // Create a compatible DC, which is used in a BitBlt from the window DC.
-    const HDC hdcMemDC = CreateCompatibleDC(hdcWindow);
-
-    // Get the client area for size calculation.
-    const int pWidth = m_videoCapWidth;
-    const int pHeight = m_videoCapHeight;
-
-    // Create a compatible bitmap from the Window DC.
-    const HBITMAP hbmScreen = CreateCompatibleBitmap(hdcWindow, pWidth, pHeight);
-
-    // Select the compatible bitmap into the compatible memory DC.
-    SelectObject(hdcMemDC, hbmScreen);
-    SetStretchBltMode(hdcMemDC, HALFTONE);
-    // Bit block transfer into our compatible memory DC.
-    m_isVideoCap = StretchBlt(hdcMemDC, 0, 0, pWidth, pHeight, hdcWindow, 0, 0, m_videoSourceRect.right - m_videoSourceRect.left, m_videoSourceRect.bottom - m_videoSourceRect.top, SRCCOPY);
-    if (m_isVideoCap)
-    {
-        // Get the BITMAP from the HBITMAP.
-        BITMAP bmpScreen;
-        GetObject(hbmScreen, sizeof(BITMAP), &bmpScreen);
-
-        BITMAPINFOHEADER bi;
-        bi.biSize = sizeof(BITMAPINFOHEADER);
-        bi.biWidth = bmpScreen.bmWidth;
-        bi.biHeight = -bmpScreen.bmHeight;
-        bi.biPlanes = 1;
-        bi.biBitCount = 32;
-        bi.biCompression = BI_RGB;
-        bi.biSizeImage = 0;
-        bi.biXPelsPerMeter = 0;
-        bi.biYPelsPerMeter = 0;
-        bi.biClrUsed = 0;
-        bi.biClrImportant = 0;
-
-        const size_t dwBmpSize = ((bmpScreen.bmWidth * bi.biBitCount + 31) / 32) * 4 * bmpScreen.bmHeight;
-
-        const HANDLE hDIB = GlobalAlloc(GHND, dwBmpSize);
-        char* lpbitmap = (char*)GlobalLock(hDIB);
-
-        // Gets the "bits" from the bitmap, and copies them into a buffer 
-        // that's pointed to by lpbitmap.
-        GetDIBits(hdcWindow, hbmScreen, 0, (UINT)bmpScreen.bmHeight, lpbitmap, (BITMAPINFO*)&bi, DIB_RGB_COLORS);
-
-        // copy bitmap pixels to texture, reversing BGR to RGB and adding an opaque alpha channel
-        copy_bgra_rgba<true>((unsigned int*)(m_videoCapTex->data()), (const unsigned int*)lpbitmap, pWidth * pHeight);
-
-        GlobalUnlock(hDIB);
-        GlobalFree(hDIB);
-
-        m_rd->m_texMan.SetDirty(m_videoCapTex.get());
-    }
-
-    ReleaseDC(m_videoCapHwnd, hdcWindow);
-    DeleteObject(hbmScreen);
-    DeleteObject(hdcMemDC);
-#endif
 
     return S_OK;
 }

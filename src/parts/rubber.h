@@ -42,12 +42,10 @@ class Rubber :
    public IPerPropertyBrowsing // Ability to fill in dropdown in property browser
 {
 public:
-#ifdef __STANDALONE__
    STDMETHOD(GetIDsOfNames)(REFIID /*riid*/, LPOLESTR* rgszNames, UINT cNames, LCID lcid,DISPID* rgDispId);
    STDMETHOD(Invoke)(DISPID dispIdMember, REFIID /*riid*/, LCID lcid, WORD wFlags, DISPPARAMS* pDispParams, VARIANT* pVarResult, EXCEPINFO* pExcepInfo, UINT* puArgErr);
    STDMETHOD(GetDocumentation)(INT index, BSTR *pBstrName, BSTR *pBstrDocString, DWORD *pdwHelpContext, BSTR *pBstrHelpFile);
    HRESULT FireDispID(const DISPID dispid, DISPPARAMS * const pdispparams) final;
-#endif
    Rubber()
    {
       m_menuid = IDR_SURFACEMENU;
@@ -89,9 +87,6 @@ public:
    void MoveOffset(const float dx, const float dy) final;
    void SetObjectPos() final;
 
-#ifndef __STANDALONE__
-   void DoCommand(int icmd, int x, int y) final;
-#endif
 
    int GetMinimumPoints() const final { return 2; }
 
@@ -115,9 +110,6 @@ public:
    void WriteRegDefaults() final;
    void UpdateStatusBarInfo() final;
 
-#if 0
-   float GetSurfaceHeight(float x, float y) const final;
-#endif
 
    RubberData m_d;
 

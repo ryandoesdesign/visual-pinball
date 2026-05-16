@@ -8,9 +8,7 @@
 #include "utils/eventproxy.h"
 #include "utils/fileio.h"
 
-#ifdef __STANDALONE__
 #include <SDL3_ttf/SDL_ttf.h>
-#endif
 
 class TextboxData final
 {
@@ -44,12 +42,10 @@ class Textbox :
    public IRenderable
 {
 public:
-#ifdef __STANDALONE__
    STDMETHOD(GetIDsOfNames)(REFIID /*riid*/, LPOLESTR* rgszNames, UINT cNames, LCID lcid,DISPID* rgDispId);
    STDMETHOD(Invoke)(DISPID dispIdMember, REFIID /*riid*/, LCID lcid, WORD wFlags, DISPPARAMS* pDispParams, VARIANT* pVarResult, EXCEPINFO* pExcepInfo, UINT* puArgErr);
    STDMETHOD(GetDocumentation)(INT index, BSTR *pBstrName, BSTR *pBstrDocString, DWORD *pdwHelpContext, BSTR *pBstrHelpFile);
    HRESULT FireDispID(const DISPID dispid, DISPPARAMS * const pdispparams) final;
-#endif
    Textbox() { m_desktopBackdrop = true; } // Textbox is always located on backdrop
    virtual ~Textbox();
 
@@ -93,9 +89,7 @@ private:
    std::shared_ptr<BaseTexture> m_texture = nullptr;
    IFont *m_pIFontPlay = nullptr; // Our font, scaled to match play window resolution
 
-#ifdef __STANDALONE__
    TTF_Font* LoadFont();
-#endif
 
 public:
    // ITextbox

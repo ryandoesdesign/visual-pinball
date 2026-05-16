@@ -167,52 +167,6 @@ string Decal::GetFontName() const
 
 void Decal::GetTextSize(int * const px, int * const py)
 {
-#ifndef __STANDALONE__
-   const int len = (int)m_d.m_text.length();
-   LOGFONT lf = m_d.m_font.ToLogFont();
-   const HFONT hFont = CreateFontIndirect(&lf);
-   constexpr int alignment = DT_LEFT;
-
-   const CClientDC clientDC(nullptr);
-   const CFont hFontOld = clientDC.SelectObject(hFont);
-
-   TEXTMETRIC tm;
-   clientDC.GetTextMetrics(tm);
-   if (m_d.m_verticalText)
-   {
-      // Do huge amounts of work to get rid of the descent and internal ascent of the font, because it leaves ugly spaces
-      *py = AUTOLEADING * len;
-      *px = 0;
-      for (int i = 0; i < len; i++)
-      {
-         RECT rcOut;
-         rcOut.left = 0;
-         rcOut.top = 0;		//-tm.tmInternalLeading + 2; // Leave a pixel for anti-aliasing;
-         rcOut.right = 0x1;
-         rcOut.bottom = 0x1;
-         ::DrawText(clientDC.GetHDC(), m_d.m_text.c_str() + i, 1, &rcOut, alignment | DT_NOCLIP | DT_NOPREFIX | DT_WORDBREAK | DT_CALCRECT);
-
-         *px = max(*px, (int)rcOut.right);
-      }
-   }
-   else
-   {
-      *py = tm.tmAscent;
-
-      RECT rcOut;
-      rcOut.left = 0;
-      rcOut.top = 0;			//-tm.tmInternalLeading + 2; // Leave a pixel for anti-aliasing;
-      rcOut.right = 0x1;
-      rcOut.bottom = 0x1;
-      ::DrawText(clientDC.GetHDC(), m_d.m_text.c_str(), len, &rcOut, alignment | DT_NOCLIP | DT_NOPREFIX | DT_WORDBREAK | DT_CALCRECT);
-
-      *px = rcOut.right;
-   }
-
-   clientDC.SelectObject(hFontOld);
-
-   DeleteObject(hFont);
-#endif
 }
 
 float Decal::GetDepth(const Vertex3Ds& viewDir) const
@@ -360,123 +314,6 @@ void Decal::RenderSetup(RenderDevice *device)
 
    UpdateBounds();
    
-#ifndef __STANDALONE__
-   if (m_d.m_decaltype == DecalText)
-   {
-      RECT rcOut = { };
-      const int len = (int)m_d.m_text.length();
-      LOGFONT lf = m_d.m_font.ToLogFont();
-      const HFONT hFont = CreateFontIndirect(&lf);
-      int alignment = DT_LEFT;
-
-      const CClientDC clientDC(nullptr);
-
-      CFont hFontOld = clientDC.SelectObject(hFont);
-
-      TEXTMETRIC tm;
-      clientDC.GetTextMetrics(tm);
-
-      float charheight;
-      if (m_d.m_verticalText)
-      {
-         int maxwidth = 0;
-
-         for (int i = 0; i < len; i++)
-         {
-            rcOut.left = 0;
-            rcOut.top = 0;//-tm.tmInternalLeading + 2; // Leave a pixel for anti-aliasing
-            rcOut.right = 1;
-            rcOut.bottom = 1;
-            ::DrawText(clientDC.GetHDC(), m_d.m_text.c_str() + i, 1, &rcOut, alignment | DT_NOCLIP | DT_NOPREFIX | DT_WORDBREAK | DT_CALCRECT);
-            maxwidth = max(maxwidth, (int)rcOut.right);
-         }
-
-         rcOut.bottom += AUTOLEADING * (len - 1);
-         rcOut.right = maxwidth;
-
-         charheight = m_realheight / (float)len;
-      }
-      else
-      {
-         rcOut.left = 0;
-         rcOut.top = 0;//-tm.tmInternalLeading + 2; // Leave a pixel for anti-aliasing
-         rcOut.right = 1;
-         rcOut.bottom = 1;
-         ::DrawText(clientDC.GetHDC(), m_d.m_text.c_str(), len, &rcOut, alignment | DT_NOCLIP | DT_NOPREFIX | DT_WORDBREAK | DT_CALCRECT);
-
-         charheight = m_realheight;
-      }
-
-      clientDC.SelectObject(hFontOld);
-
-      // Calculate the percentage of the texture which is for oomlats and commas.
-      const float invascent = charheight / (float)tm.tmAscent;
-      m_leading = (float)tm.tmInternalLeading * invascent /*m_d.m_height*/;
-      m_descent = (float)tm.tmDescent * invascent;
-
-      m_textImg = BaseTexture::Create(rcOut.right, rcOut.bottom, BaseTexture::SRGBA);
-
-      if (m_d.m_color == RGB(255, 255, 255))
-         m_d.m_color = RGB(254, 255, 255); //m_pinimage.SetTransparentColor(RGB(0,0,0));
-      else if (m_d.m_color == RGB(0, 0, 0))
-         m_d.m_color = RGB(0, 0, 1);
-
-      BITMAPINFO bmi = {};
-      bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-      bmi.bmiHeader.biWidth = m_textImg->width();
-      bmi.bmiHeader.biHeight = -(LONG)m_textImg->height();
-      bmi.bmiHeader.biPlanes = 1;
-      bmi.bmiHeader.biBitCount = 32;
-      bmi.bmiHeader.biCompression = BI_RGB;
-      bmi.bmiHeader.biSizeImage = 0;
-
-      void *bits;
-      const HBITMAP hbm = CreateDIBSection(0, &bmi, DIB_RGB_COLORS, &bits, nullptr, 0);
-
-      assert(hbm);
-
-      CDC dc;
-      dc.CreateCompatibleDC(nullptr);
-      const CBitmap oldBmp = dc.SelectObject(hbm);
-
-      dc.SelectObject(static_cast<HBRUSH>(dc.GetStockObject(WHITE_BRUSH)));
-      dc.PatBlt(0, 0, rcOut.right, rcOut.bottom, PATCOPY);
-
-      hFontOld = dc.SelectObject(hFont);
-
-      dc.SetTextColor(m_d.m_color);
-      dc.SetBkMode(TRANSPARENT);
-      dc.SetTextAlign(TA_LEFT | TA_TOP | TA_NOUPDATECP);
-      alignment = DT_CENTER;
-
-      if (m_d.m_verticalText)
-      {
-         for (int i = 0; i < len; i++)
-         {
-            rcOut.top = AUTOLEADING * i;//-tm.tmInternalLeading + 2; // Leave a pixel for anti-aliasing
-            rcOut.bottom = rcOut.top + 100;
-            dc.DrawText(m_d.m_text.c_str() + i, 1, rcOut, alignment | DT_NOCLIP | DT_NOPREFIX | DT_WORDBREAK);
-         }
-      }
-      else
-         dc.DrawText(m_d.m_text.c_str(), len, rcOut, alignment | DT_NOCLIP | DT_NOPREFIX | DT_WORDBREAK);
-
-      // Copy and set to opaque
-      const D3DCOLOR* __restrict bitsd = (D3DCOLOR*)bits;
-            D3DCOLOR* __restrict dest = (D3DCOLOR*)m_textImg->data();
-      for (unsigned int i = 0; i < m_textImg->height(); i++)
-      {
-         for (unsigned int l = 0; l < m_textImg->width(); l++, dest++, bitsd++)
-            *dest = *bitsd | 0xFF000000u;
-         dest += m_textImg->pitch()/4 - m_textImg->width();
-      }
-
-      dc.SelectObject(hFontOld);
-      dc.SelectObject(oldBmp);
-      DeleteObject(hFont);
-      DeleteObject(hbm);
-   }
-#endif
 
    const float height = m_ptable->GetSurfaceHeight(m_d.m_szSurface, m_d.m_vCenter.x, m_d.m_vCenter.y);
 
@@ -806,30 +643,12 @@ STDMETHODIMP Decal::put_Material(BSTR newVal)
 
 STDMETHODIMP Decal::get_Font(IFontDisp **pVal)
 {
-#ifndef __STANDALONE__
-   IFont* pIFont;
-   FONTDESC oleFD = m_d.m_font.ToOLEFontDesc();
-   OleCreateFontIndirect(&oleFD, IID_IFont, (void **)&pIFont);
-   delete[] oleFD.lpstrName;
-   const HRESULT hr = pIFont->QueryInterface(IID_IFontDisp, (void **)pVal);
-   pIFont->Release();
-   return hr;
-#else
    return S_OK;
-#endif
 }
 
 STDMETHODIMP Decal::putref_Font(IFontDisp *pFont)
 {
    //We know that our own property browser gives us the same pointer
-#ifndef __STANDALONE__
-   IFont* pIFont;
-   if (SUCCEEDED(pFont->QueryInterface(IID_IFont, (void**)&pIFont)))
-   {
-       m_d.m_font.FromOLEFont(pIFont);
-       pIFont->Release();
-   }
-#endif
    SetDirtyDraw();
    EnsureSize();
 

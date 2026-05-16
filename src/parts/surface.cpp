@@ -72,76 +72,6 @@ HRESULT Surface::Init(const float x, const float y, const bool fromMouseClick, c
    return S_OK;
 }
 
-#if 0
-HRESULT Surface::InitTarget(const float x, const float y, const bool fromMouseClick)
-{
-   m_isWall = false;
-
-   float width, length;
-   LinkProp(width, Width);
-   LinkProp(length, Length);
-
-   CComObject<DragPoint> *pdp;
-   CComObject<DragPoint>::CreateInstance(&pdp);
-   if (pdp)
-   {
-      pdp->AddRef();
-      pdp->Init(this, x - width, y - length, 0.f, false);
-      m_vdpoint.push_back(pdp);
-   }
-   CComObject<DragPoint>::CreateInstance(&pdp);
-   if (pdp)
-   {
-      pdp->AddRef();
-      pdp->Init(this, x - width, y + length, 0.f, false);
-      pdp->m_autoTexture = false;
-      m_vdpoint.push_back(pdp);
-   }
-   CComObject<DragPoint>::CreateInstance(&pdp);
-   if (pdp)
-   {
-      pdp->AddRef();
-      pdp->Init(this, x + width, y + length, 0.f, false);
-      pdp->m_autoTexture = false;
-      pdp->m_texturecoord = 1.0f;
-      m_vdpoint.push_back(pdp);
-   }
-   CComObject<DragPoint>::CreateInstance(&pdp);
-   if (pdp)
-   {
-      pdp->AddRef();
-      pdp->Init(this, x + 30.0f, y - 6.0f, 0.f, false);
-      m_vdpoint.push_back(pdp);
-   }
-
-   //SetDefaults();
-   //Set separate defaults for targets (SetDefaults sets the Wall defaults)
-   LinkProp(m_timerEnabled, TimerEnabled);
-   LinkProp(m_timerInterval, TimerInterval);
-   LinkProp(m_d.m_hitEvent, HitEvent);
-   LinkProp(m_d.m_threshold, HitThreshold);
-   LinkProp(m_d.m_slingshot_threshold, SlingshotThreshold);
-   m_d.m_inner = true; //!! Deprecated, do not use anymore
-   LinkProp(m_d.m_szImage, TopImage);
-   LinkProp(m_d.m_szSideImage, SideImage);
-   LinkProp(m_d.m_droppable, Droppable);
-   LinkProp(m_d.m_flipbook, Flipbook);
-   LinkProp(m_d.m_isBottomSolid, IsBottomSolid);
-   LinkProp(m_d.m_heightbottom, HeightBottom);
-   LinkProp(m_d.m_heighttop, HeightTop);
-   LinkProp(m_d.m_displayTexture, DisplayTexture);
-   LinkProp(m_d.m_slingshotforce, SlingshotForce);
-   LinkProp(m_d.m_slingshotAnimation, SlingshotAnimation);
-   LinkProp(m_d.m_elasticity, Elasticity);
-   LinkProp(m_d.m_elasticityFalloff, ElasticityFallOff);
-   LinkProp(m_d.m_friction, Friction);
-   LinkProp(m_d.m_scatter, Scatter);
-   LinkProp(m_d.m_topBottomVisible, Visible);
-   LinkProp(m_d.m_sideVisible, SideVisible);
-   LinkProp(m_d.m_collidable, Collidable);
-   return S_OK;
-}
-#endif
 
 void Surface::SetDefaults(const bool fromMouseClick)
 {
@@ -1061,39 +991,6 @@ void Surface::AddPoint(int x, int y, const bool smooth)
    STOPUNDO
 }
 
-#ifndef __STANDALONE__
-void Surface::DoCommand(int icmd, int x, int y)
-{
-   ISelect::DoCommand(icmd, x, y);
-
-   switch (icmd)
-   {
-   case ID_WALLMENU_FLIP:
-      FlipPointY(GetPointCenter());
-      break;
-
-   case ID_WALLMENU_MIRROR:
-      FlipPointX(GetPointCenter());
-      break;
-
-   case ID_WALLMENU_ROTATE:
-      VPX::WinUI::RotatePointsDialog(this);
-      break;
-
-   case ID_WALLMENU_SCALE:
-      VPX::WinUI::ScalePointsDialog(this);
-      break;
-
-   case ID_WALLMENU_TRANSLATE:
-      VPX::WinUI::TranslatePointsDialog(this);
-      break;
-
-   case ID_WALLMENU_ADDPOINT:
-      AddPoint(x, y, false);
-      break;
-   }
-}
-#endif
 
 void Surface::FlipY(const Vertex2D& pvCenter)
 {

@@ -212,16 +212,6 @@ void Textbox::RenderSetup(RenderDevice *device)
    assert(m_rd == nullptr);
    m_rd = device;
 
-#ifndef __STANDALONE__
-   FONTDESC oleFD = m_d.m_font.ToOLEFontDesc();
-   OleCreateFontIndirect(&oleFD, IID_IFont, (void **)&m_pIFontPlay);
-   delete[] oleFD.lpstrName;
-
-   CY size;
-   m_pIFontPlay->get_Size(&size);
-   size.int64 = (LONGLONG)(size.int64 / 1.5 * (g_pplayer->m_playfieldWnd->GetWidth() * g_pplayer->m_playfieldWnd->GetHeight()));
-   m_pIFontPlay->put_Size(size);
-#endif
 
    const int width = (int)max(m_d.m_v1.x, m_d.m_v2.x) - (int)min(m_d.m_v1.x, m_d.m_v2.x);
    const int height = (int)max(m_d.m_v1.y, m_d.m_v2.y) - (int)min(m_d.m_v1.y, m_d.m_v2.y);
@@ -335,72 +325,6 @@ void Textbox::Render(const unsigned int renderMask)
          rcOut.right = width - border * 2;
          rcOut.bottom = height - border * 2;
 
-#ifndef __STANDALONE__
-         BITMAPINFO bmi = {};
-         bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-         bmi.bmiHeader.biWidth = width;
-         bmi.bmiHeader.biHeight = -height;
-         bmi.bmiHeader.biPlanes = 1;
-         bmi.bmiHeader.biBitCount = 32;
-         bmi.bmiHeader.biCompression = BI_RGB;
-         bmi.bmiHeader.biSizeImage = 0;
-
-         void *bits;
-         const HBITMAP hbm = CreateDIBSection(0, &bmi, DIB_RGB_COLORS, &bits, nullptr, 0);
-         assert(hbm);
-
-         const HDC hdc = CreateCompatibleDC(nullptr);
-         const HBITMAP oldBmp = (HBITMAP)SelectObject(hdc, hbm);
-
-         const HBRUSH hbrush = CreateSolidBrush(m_d.m_backcolor);
-         const HBRUSH hbrushold = (HBRUSH)SelectObject(hdc, hbrush);
-         PatBlt(hdc, 0, 0, width, height, PATCOPY);
-         SelectObject(hdc, hbrushold);
-         DeleteObject(hbrush);
-
-         HFONT hFont;
-         m_pIFontPlay->get_hFont(&hFont);
-         const HFONT oldFont = (HFONT)SelectObject(hdc, hFont);
-         SetTextColor(hdc, m_d.m_fontcolor);
-         SetBkMode(hdc, TRANSPARENT);
-         SetTextAlign(hdc, TA_LEFT | TA_TOP | TA_NOUPDATECP);
-
-         int alignment;
-         switch (m_d.m_talign)
-         {
-         case TextAlignLeft: alignment = DT_LEFT; break;
-
-         default:
-         case TextAlignCenter: alignment = DT_CENTER; break;
-
-         case TextAlignRight: alignment = DT_RIGHT; break;
-         }
-
-         DrawText(hdc, m_d.m_text.c_str(), (int)m_d.m_text.length(), &rcOut, alignment | DT_NOCLIP | DT_NOPREFIX | DT_WORDBREAK);
-
-         GdiFlush(); // make sure everything is drawn
-
-         // Set alpha for pixels that match transparent color (if transparent enabled), otherwise set to opaque
-         const D3DCOLOR *__restrict bitsd = (D3DCOLOR *)bits;
-         D3DCOLOR *__restrict dest = (D3DCOLOR *)m_texture->data();
-         for (unsigned int i = 0; i < m_texture->height(); i++)
-         {
-            for (unsigned int l = 0; l < m_texture->width(); l++, dest++, bitsd++)
-            {
-               const D3DCOLOR src = *bitsd;
-               if (m_d.m_transparent && ((src & 0xFFFFFFu) == m_d.m_backcolor))
-                  *dest = 0x00000000; // set to black & alpha full transparent
-               else
-                  *dest = ((src & 0x000000FFu) << 16) | (src & 0x0000FF00u) | ((src & 0x0000FF0000u) >> 16) | 0xFF000000u;
-            }
-            dest += m_texture->pitch() / 4 - m_texture->width();
-         }
-
-         SelectObject(hdc, oldFont);
-         SelectObject(hdc, oldBmp);
-         DeleteDC(hdc);
-         DeleteObject(hbm);
-#else
          SDL_Surface* pSurface = SDL_CreateSurface(m_texture->width(), m_texture->height(), SDL_PIXELFORMAT_ABGR8888);
          if (pSurface) {
             SDL_FillSurfaceRect(pSurface, NULL,
@@ -454,7 +378,6 @@ void Textbox::Render(const unsigned int renderMask)
             memcpy(m_texture->data(), pSurface->pixels, pSurface->pitch * pSurface->h);
             SDL_DestroySurface(pSurface);
          }
-#endif
          m_rd->m_texMan.SetDirty(m_texture.get());
       }
 
@@ -510,17 +433,7 @@ STDMETHODIMP Textbox::put_Text(BSTR newVal)
 
 STDMETHODIMP Textbox::get_Font(IFontDisp **pVal)
 {
-#ifndef __STANDALONE__
-   IFont* pIFont;
-   FONTDESC oleFD = m_d.m_font.ToOLEFontDesc();
-   OleCreateFontIndirect(&oleFD, IID_IFont, (void **)&pIFont);
-   delete[] oleFD.lpstrName;
-   const HRESULT hr = pIFont->QueryInterface(IID_IFontDisp, (void **)pVal);
-   pIFont->Release();
-   return hr;
-#else
    return S_OK;
-#endif
 }
 
 STDMETHODIMP Textbox::put_Font(IFontDisp *newVal)
@@ -532,14 +445,6 @@ STDMETHODIMP Textbox::put_Font(IFontDisp *newVal)
 STDMETHODIMP Textbox::putref_Font(IFontDisp* pFont)
 {
    //We know that our own property browser gives us the same pointer
-#ifndef __STANDALONE__
-   IFont* pIFont;
-   if (SUCCEEDED(pFont->QueryInterface(IID_IFont, (void**)&pIFont)))
-   {
-       m_d.m_font.FromOLEFont(pIFont);
-       pIFont->Release();
-   }
-#endif
 
    SetDirtyDraw();
 
@@ -663,7 +568,6 @@ STDMETHODIMP Textbox::put_Visible(VARIANT_BOOL newVal)
    return S_OK;
 }
 
-#ifdef __STANDALONE__
 TTF_Font* Textbox::LoadFont()
 {
    TTF_Font* pFont = nullptr;
@@ -722,6 +626,5 @@ TTF_Font* Textbox::LoadFont()
 
    return pFont;
 }
-#endif
 
 #pragma endregion

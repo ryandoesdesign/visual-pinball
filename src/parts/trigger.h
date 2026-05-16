@@ -42,12 +42,10 @@ class Trigger :
    public IPerPropertyBrowsing // Ability to fill in dropdown in property browser
 {
 public:
-#ifdef __STANDALONE__
    STDMETHOD(GetIDsOfNames)(REFIID /*riid*/, LPOLESTR* rgszNames, UINT cNames, LCID lcid,DISPID* rgDispId);
    STDMETHOD(Invoke)(DISPID dispIdMember, REFIID /*riid*/, LCID lcid, WORD wFlags, DISPPARAMS* pDispParams, VARIANT* pVarResult, EXCEPINFO* pExcepInfo, UINT* puArgErr);
    STDMETHOD(GetDocumentation)(INT index, BSTR *pBstrName, BSTR *pBstrDocString, DWORD *pdwHelpContext, BSTR *pBstrHelpFile);
    HRESULT FireDispID(const DISPID dispid, DISPPARAMS * const pdispparams) final;
-#endif
    Trigger() { m_menuid = IDR_SURFACEMENU; }
    virtual ~Trigger();
 
@@ -79,10 +77,6 @@ public:
    void MoveOffset(const float dx, const float dy) final;
    void SetObjectPos() final;
 
-#ifndef __STANDALONE__
-   void EditMenu(CMenu &hmenu) final;
-   void DoCommand(int icmd, int x, int y) final;
-#endif
 
    // Multi-object manipulation
    void FlipY(const Vertex2D& pvCenter) final;
