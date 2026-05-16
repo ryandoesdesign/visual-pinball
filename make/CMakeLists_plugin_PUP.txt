@@ -37,7 +37,7 @@ set(PUP_PLUGIN_SOURCES
    plugins/pup/PUPTrigger.cpp
 )
 
-if(BUILD_SHARED AND NOT (PluginPlatform STREQUAL "windows" AND NOT MSVC))
+if(BUILD_SHARED)
    add_library(PUPPlugin MODULE ${PUP_PLUGIN_SOURCES})
 
    target_include_directories(PUPPlugin PUBLIC
