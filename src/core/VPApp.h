@@ -36,20 +36,7 @@ public:
    // Script security level
    int m_securitylevel;
 
-#ifndef __STANDALONE__
-   static CComModule m_module;
-   class WinApp final : public CWinApp
-   {
-   public:
-      WinApp() = default;
-   protected:
-      BOOL OnIdle(LONG) override;
-      BOOL PreTranslateMessage(MSG& msg) override;
-   } m_winApp;
-   HINSTANCE GetInstanceHandle() const { return m_winApp.GetInstanceHandle(); }
-#else
    HINSTANCE GetInstanceHandle() const { return nullptr; }
-#endif
 
 private:
    std::filesystem::path m_commandLineCustomSettingsFileName; // Override default ini filename, must be defined before InitInstance

@@ -20,9 +20,6 @@
 
 #define SET_CRT_DEBUG_FIELD(a) _CrtSetDbgFlag((a) | _CrtSetDbgFlag(_CRTDBG_REPORT_FLAG))
 
-#ifndef __STANDALONE__
-#include "vpinball_i.c"
-#endif
 
 #include <locale>
 #include <codecvt>
@@ -31,11 +28,9 @@
 #include <SDL3/SDL_main.h>
 #endif
 
-#ifdef __STANDALONE__
 #include <SDL3_ttf/SDL_ttf.h>
 #include <filesystem>
 #include <libwinevbs/libwinevbs.h>
-#endif
 
 #include "parts/ball.h"
 #include "parts/timer.h"
@@ -61,11 +56,7 @@
 
 
 #ifndef OVERRIDE
-#ifndef __STANDALONE__
-   #define OVERRIDE override
-#else
    #define OVERRIDE
-#endif
 #endif
 
 #ifdef CRASH_HANDLER
@@ -98,69 +89,6 @@ extern "C" int __cdecl _purecall()
 }
 #endif
 
-#if !defined(__STANDALONE__)
-
-#if defined(ENABLE_DX9)
-   #ifndef DISABLE_FORCE_NVIDIA_OPTIMUS
-      extern "C" {
-         __declspec(dllexport) DWORD NvOptimusEnablement = 0x00000001;
-      }
-   #else
-      extern "C" {
-         __declspec(dllexport) DWORD NvOptimusEnablement = 0x00000000;
-      }
-   #endif
-   #ifndef DISABLE_FORCE_AMD_HIGHPERF
-      extern "C" { _declspec(dllexport) DWORD AmdPowerXpressRequestHighPerformance = 0x00000001; }
-   #endif
-#endif
-
-#if (_WIN32_WINNT <= 0x0601 /* _WIN32_WINNT_WIN7 */ )
-typedef enum ORIENTATION_PREFERENCE {
-   ORIENTATION_PREFERENCE_NONE = 0x0,
-   ORIENTATION_PREFERENCE_LANDSCAPE = 0x1,
-   ORIENTATION_PREFERENCE_PORTRAIT = 0x2,
-   ORIENTATION_PREFERENCE_LANDSCAPE_FLIPPED = 0x4,
-   ORIENTATION_PREFERENCE_PORTRAIT_FLIPPED = 0x8
-} ORIENTATION_PREFERENCE;
-typedef BOOL(WINAPI *pSDARP)(ORIENTATION_PREFERENCE orientation);
-
-static pSDARP SetDisplayAutoRotationPreferences = nullptr;
-#endif
-
-#if 0 //!defined(_CRTDBG_MAP_ALLOC) //&& (!defined(__STDCPP_DEFAULT_NEW_ALIGNMENT__) || (__STDCPP_DEFAULT_NEW_ALIGNMENT__ < 16))
-// previous: somewhat custom new/delete was still needed, otherwise VPX crashed when exiting the player
-//  was this due to old win32xx's whacky Shared_Ptr implementation?
-void *operator new(const size_t size_req)
-{
-   void* const ptr = _aligned_malloc(size_req, 16);
-   if (!ptr)
-      throw std::bad_alloc{};
-   return ptr;
-}
-void operator delete(void *address)
-{
-   _aligned_free(address);
-}
-/*void *operator new[](const size_t size_req)
-{
-   void* const ptr = _aligned_malloc(size_req, 16);
-   if (!ptr)
-      throw std::bad_alloc{};
-   return ptr;
-}
-void operator delete[](void *address)
-{
-   _aligned_free(address);
-}*/
-#endif
-
-CComModule VPApp::m_module;
-
-BEGIN_OBJECT_MAP(ObjectMap)
-END_OBJECT_MAP()
-
-#endif
 
 
 VPApp::VPApp()
@@ -261,13 +189,7 @@ VPApp::VPApp()
 
 VPApp::~VPApp()
 {
-   #ifndef __STANDALONE__
-      m_module.RevokeClassObjects();
-      m_module.Term();
-      CoUninitialize();
-   #else
       libwinevbs_shutdown();
-   #endif
    g_pvp = nullptr;
    g_app = nullptr;
 
@@ -321,7 +243,6 @@ void VPApp::InitInstance()
 
    Logger::Init();
 
-#ifdef __STANDALONE__
    libwinevbs_callbacks_t callbacks = {};
    callbacks.log = [](libwinevbs_log_level_t level, const char* format, va_list args) {
       va_list args_copy;
@@ -341,7 +262,6 @@ void VPApp::InitInstance()
       }
    };
    libwinevbs_init(&callbacks);
-#endif
 
    Logger::SetupLogger(m_settings.GetEditor_EnableLog());
    PLOGI << "Starting VPX - " << VP_VERSION_STRING_FULL_LITERAL;
@@ -367,26 +287,3 @@ void VPApp::InitInstance()
    m_settings.Save();
 }
 
-#ifndef __STANDALONE__
-BOOL VPApp::WinApp::OnIdle(LONG)
-{
-   if (g_pplayer)
-      g_pplayer->m_pluginManager.ProcessAsyncCallbacks();
-   return FALSE;
-}
-BOOL VPApp::WinApp::PreTranslateMessage(MSG &msg)
-{
-   if ((msg.message >= WM_KEYFIRST && msg.message <= WM_KEYLAST) /* && (msg.wParam == VK_DELETE) */)
-   {
-      HWND hwndFocus = GetFocus();
-      TCHAR className[256];
-      if (hwndFocus && GetClassName(hwndFocus, className, 256))
-      {
-         // If it's an Edit control, skip accelerators
-         if (_tcscmp(className, _T("Edit")) == 0)
-            return FALSE;
-      }
-   }
-   return __super::PreTranslateMessage(msg);
-}
-#endif

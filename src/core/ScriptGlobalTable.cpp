@@ -9,9 +9,6 @@
 #include "renderer/Renderer.h"
 #include "ui/win/WinEditor.h"
 
-#ifndef __STANDALONE__
-#include <atlsafe.h>
-#endif
 
 #include "serial.h"
 static serial Serial;
@@ -512,54 +509,6 @@ STDMETHODIMP ScriptGlobalTable::SaveValue(BSTR TableName, BSTR ValueName, VARIAN
 {
    HRESULT hr;
 
-#ifndef __STANDALONE__
-   const wstring wzPath = (g_app->m_fileLocator.GetTablePath(g_pplayer->m_ptable, FileLocator::TableSubFolder::User, true) / "VPReg.stg"sv).wstring();
-
-   IStorage *pstgRoot;
-   if (FAILED(hr = StgOpenStorage(wzPath.c_str(), nullptr, STGM_TRANSACTED | STGM_READWRITE | STGM_SHARE_EXCLUSIVE, nullptr, 0, &pstgRoot)))
-   {
-      // Registry file does not exist - create it
-      if (FAILED(hr = StgCreateDocfile(wzPath.c_str(), STGM_TRANSACTED | STGM_READWRITE | STGM_SHARE_EXCLUSIVE | STGM_CREATE, 0, &pstgRoot)))
-      {
-         if (FAILED(hr = StgCreateDocfile(wzPath.c_str(), STGM_TRANSACTED | STGM_READWRITE | STGM_SHARE_EXCLUSIVE | STGM_CREATE, 0, &pstgRoot)))
-            return hr;
-      }
-   }
-
-   IStorage *pstgTable;
-   if (FAILED(hr = pstgRoot->OpenStorage(TableName, nullptr, STGM_TRANSACTED | STGM_READWRITE | STGM_SHARE_EXCLUSIVE, nullptr, 0, &pstgTable)))
-   {
-      // Table file does not exist
-      if (FAILED(hr = pstgRoot->CreateStorage(TableName, STGM_TRANSACTED | STGM_READWRITE | STGM_SHARE_EXCLUSIVE | STGM_CREATE, 0, 0, &pstgTable)))
-      {
-         pstgRoot->Release();
-         return hr;
-      }
-   }
-
-   IStream *pstmValue;
-   if (FAILED(hr = pstgTable->CreateStream(ValueName, STGM_DIRECT | STGM_READWRITE | STGM_SHARE_EXCLUSIVE | STGM_CREATE, 0, 0, &pstmValue)))
-   {
-      pstgTable->Release();
-      pstgRoot->Release();
-      return hr;
-   }
-
-   BSTR bstr = BstrFromVariant(&Value, 0x409);
-
-   DWORD writ;
-   pstmValue->Write((WCHAR *)bstr, (uint32_t)/*wcslen*/ SysStringLen(bstr) * (uint32_t)sizeof(WCHAR), &writ);
-
-   SysFreeString(bstr);
-
-   pstmValue->Release();
-
-   pstgTable->Commit(STGC_DEFAULT);
-   pstgTable->Release();
-
-   pstgRoot->Commit(STGC_DEFAULT);
-   pstgRoot->Release();
-#else
    mINI::INIStructure ini;
    mINI::INIFile file(g_app->m_fileLocator.GetTablePath(g_pplayer->m_ptable, FileLocator::TableSubFolder::User, true) / "VPReg.ini"sv);
    file.read(ini);
@@ -580,7 +529,6 @@ STDMETHODIMP ScriptGlobalTable::SaveValue(BSTR TableName, BSTR ValueName, VARIAN
    file.write(ini);
 
    PLOGD << "TableName=" << szTableName << ", ValueName=" << szValueName << ", Value=" << szValue;
-#endif
    return S_OK;
 }
 
@@ -588,54 +536,6 @@ STDMETHODIMP ScriptGlobalTable::LoadValue(BSTR TableName, BSTR ValueName, VARIAN
 {
    HRESULT hr;
 
-#ifndef __STANDALONE__
-   const std::filesystem::path path = g_app->m_fileLocator.GetTablePath(g_pplayer->m_ptable, FileLocator::TableSubFolder::User, false) / "VPReg.stg"sv;
-
-   IStorage *pstgRoot;
-   if (FAILED(hr = StgOpenStorage(path.wstring().c_str(), nullptr, STGM_TRANSACTED | STGM_READWRITE | STGM_SHARE_EXCLUSIVE, nullptr, 0, &pstgRoot)))
-   {
-      SetVarBstr(Value, SysAllocString(L""));
-      return S_OK;
-   }
-
-   IStorage* pstgTable;
-   if (FAILED(hr = pstgRoot->OpenStorage(TableName, nullptr, STGM_TRANSACTED | STGM_READWRITE | STGM_SHARE_EXCLUSIVE, nullptr, 0, &pstgTable)))
-   {
-      SetVarBstr(Value, SysAllocString(L""));
-      pstgRoot->Release();
-      return S_OK;
-   }
-
-   IStream* pstmValue;
-   if (FAILED(hr = pstgTable->OpenStream(ValueName, 0, STGM_DIRECT | STGM_READ | STGM_SHARE_EXCLUSIVE, 0, &pstmValue)))
-   {
-      SetVarBstr(Value, SysAllocString(L""));
-      pstgTable->Release();
-      pstgRoot->Release();
-      return S_OK;
-   }
-
-   STATSTG statstg;
-   pstmValue->Stat(&statstg, STATFLAG_NONAME);
-
-   const unsigned int size = statstg.cbSize.LowPart / sizeof(WCHAR);
-
-   BSTR wzT = SysAllocStringLen(nullptr,size);
-
-   DWORD read;
-   hr = pstmValue->Read(wzT, size * (int)sizeof(WCHAR), &read);
-   wzT[size] = L'\0';
-
-   pstmValue->Release();
-
-   pstgTable->Commit(STGC_DEFAULT);
-   pstgTable->Release();
-
-   pstgRoot->Commit(STGC_DEFAULT);
-   pstgRoot->Release();
-
-   SetVarBstr(Value, wzT);
-#else
    Settings* const pSettings = &g_pplayer->m_ptable->m_settings;
 
    mINI::INIStructure ini;
@@ -652,7 +552,6 @@ STDMETHODIMP ScriptGlobalTable::LoadValue(BSTR TableName, BSTR ValueName, VARIAN
       SetVarBstr(Value, SysAllocString(L""));
 
    PLOGD << "TableName=" << szTableName << ", ValueName=" << szValueName << ", Value=" << MakeString(V_BSTR(Value));
-#endif
    return S_OK;
 }
 
@@ -1073,103 +972,38 @@ STDMETHODIMP ScriptGlobalTable::get_VersionRevision(int *pVal)
 
 STDMETHODIMP ScriptGlobalTable::OpenSerial(BSTR device)
 {
-#ifndef __STANDALONE__
-   return Serial.open(MakeString(device)) ? S_OK : E_FAIL;
-#else
    return E_FAIL;
-#endif
 }
 
 STDMETHODIMP ScriptGlobalTable::CloseSerial()
 {
-#ifndef __STANDALONE__
-   Serial.close();
-#endif
    return S_OK;
 }
 
 STDMETHODIMP ScriptGlobalTable::FlushSerial()
 {
-#ifndef __STANDALONE__
-   Serial.flush();
-#endif
    return S_OK;
 }
 
 STDMETHODIMP ScriptGlobalTable::SetupSerial(int baud, int bits, int parity, int stopbit, VARIANT_BOOL rts, VARIANT_BOOL dtr)
 {
-#ifndef __STANDALONE__
-   Serial.setup(serial::get_baud(baud),serial::get_bits(bits),parity == 0 ? SERIAL_PARITY_NONE : (parity == 1 ? SERIAL_PARITY_EVEN : SERIAL_PARITY_ODD),serial::get_stopbit(stopbit));
-   Serial.set_rts(VBTOb(rts));
-   Serial.set_dtr(VBTOb(dtr));
-#endif
 
    return S_OK;
 }
 
 STDMETHODIMP ScriptGlobalTable::ReadSerial(int size, VARIANT *pVal)
 {
-#ifndef __STANDALONE__
-   SAFEARRAY *psa = SafeArrayCreateVector(VT_VARIANT, 0, size);
-
-   VARIANT *pData;
-   SafeArrayAccessData(psa, (void **)&pData);
-   vector<char> data(size,0);
-   Serial.read(data);
-   for (int i = 0; i < size; ++i)
-   {
-      pData[i].vt = VT_UI1;
-      pData[i].cVal = data[i];
-   }
-   SafeArrayUnaccessData(psa);
-
-   pVal->vt = VT_ARRAY | VT_VARIANT;
-   pVal->parray = psa;
-#endif
 
    return S_OK;
 }
 
 STDMETHODIMP ScriptGlobalTable::WriteSerial(VARIANT pVal)
 {
-#ifndef __STANDALONE__
-   SAFEARRAY *psa = pVal.parray;
-   SAFEARRAYBOUND *psafearraybound = &((psa->rgsabound)[0]);
-   const LONG size = (LONG)psafearraybound->cElements;
-
-   vector<char> data(size);
-
-   VARIANT state;
-   state.vt = VT_UI1;
-
-   for (LONG ofs = 0; ofs < size; ++ofs)
-   {
-      SafeArrayGetElement(psa, &ofs, &state);
-      data[ofs] = state.cVal;
-   }
-
-   Serial.write(data);
-#endif
    return S_OK;
 }
 
 STDMETHODIMP ScriptGlobalTable::GetSerialDevices(VARIANT *pVal)
 {
-#ifndef __STANDALONE__
-   static vector<string> availablePorts;
-   serial::list_ports(availablePorts);
-
-   SAFEARRAY *psa = SafeArrayCreateVector(VT_VARIANT, 0, (ULONG)availablePorts.size());
-   CComVariant varDevice;
-   for (LONG i = 0; i < (LONG)availablePorts.size(); ++i)
-   {
-      varDevice = availablePorts[i].c_str();
-      SafeArrayPutElement(psa, &i, &varDevice);
-   }
-
-   pVal->vt = VT_ARRAY | VT_VARIANT;
-   pVal->parray = psa;
-#endif
 
    return S_OK;
 }
@@ -1181,12 +1015,8 @@ STDMETHODIMP ScriptGlobalTable::get_RenderingMode(int *pVal)
    else if ((g_pplayer->m_renderer->m_stereo3D != STEREO_OFF) && g_pplayer->m_renderer->m_stereo3Denabled)
       *pVal = 1; // Stereo 3D (3DTV or anaglyph)
    else {
-#ifndef __STANDALONE__
-      *pVal = 0; // 2D
-#else
       int val = g_pplayer->m_ptable->m_settings.GetStandalone_RenderingModeOverride();
       *pVal = (val == -1) ? 0 : val;
-#endif
    }
 
    return S_OK;

@@ -182,26 +182,6 @@ UndoRecord::~UndoRecord()
 
 void UndoRecord::MarkForUndo(IEditable *const pie, const bool saveForUndo)
 {
-#ifndef __STANDALONE__
-   if (FindIndexOf(m_vieMark, pie) != -1) // Been marked already
-      return;
-
-   if (FindIndexOf(m_vieCreate, pie) != -1) // Just created, so undo will delete it anyway
-      return;
-
-   m_vieMark.push_back(pie);
-
-   FastIStream *const pstm = new FastIStream();
-   pstm->AddRef();
-
-   DWORD write;
-   pstm->Write(&pie, sizeof(IEditable *), &write);
-
-   BiffWriter writer(pstm, 0);
-   pie->Save(writer, true);
-
-   m_vstm.push_back(pstm);
-#endif
 }
 
 void UndoRecord::MarkForCreate(IEditable *const pie)

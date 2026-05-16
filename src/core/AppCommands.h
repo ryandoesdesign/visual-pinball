@@ -76,20 +76,6 @@ public:
    void Execute() override;
 };
 
-#ifndef __STANDALONE__
-class Win32EditCommand : public TableBasedCommand
-{
-public:
-   Win32EditCommand();
-   explicit Win32EditCommand(const std::filesystem::path& tableFilename);
-   ~Win32EditCommand() override = default;
-   void Execute() override;
-
-   // Legacy behavior, somewhat hacky/buggy as they rely on global options to get expected behavior
-   bool m_minimized = false; // Run the editor minimized, usually in conjunction with the global option to select table on start
-   bool m_disablePauseMenu = false; // Disable the pause menu in the editor, leading to escape key to exit
-};
-#endif
 
 class LiveEditCommand : public TableBasedCommand
 {

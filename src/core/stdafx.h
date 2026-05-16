@@ -25,9 +25,6 @@
 
 #define COMPRESS_MESHES // uses miniz for compressing the meshes
 
-#ifndef __STANDALONE__
-#define CRASH_HANDLER
-#endif
 
 //#define _CRTDBG_MAP_ALLOC
 
@@ -97,12 +94,6 @@
 
 // No VR support for DX9, BGFX is in progress, Metal VR support under BGFX is still to be implemented
 //#if !defined(__STANDALONE__) && (defined(ENABLE_OPENGL) || defined(ENABLE_BGFX)) && !defined(__APPLE__)
-#if !defined(__STANDALONE__) && defined(ENABLE_OPENGL)
-#define ENABLE_VR
-#endif
-#if !defined(__STANDALONE__) && defined(ENABLE_BGFX)
-#define ENABLE_XR
-#endif
 
 //
 
@@ -129,14 +120,6 @@
 
 #define _ATL_APARTMENT_THREADED
 
-#ifndef __STANDALONE__
-#ifndef APPX_E_BLOCK_HASH_INVALID
-#define APPX_E_BLOCK_HASH_INVALID _HRESULT_TYPEDEF_(0x80080207L)
-#endif
-#ifndef APPX_E_CORRUPT_CONTENT
-#define APPX_E_CORRUPT_CONTENT _HRESULT_TYPEDEF_(0x80080206L)
-#endif
-#endif
 
 //#include <vld.h>
 #ifdef _CRTDBG_MAP_ALLOC
@@ -145,11 +128,6 @@
 
 #include "main.h"
 
-#ifndef __STANDALONE__
-#ifdef _WIN32
-__forceinline void ListView_SetItemText_Safe(HWND hwndLV, WPARAM iItem, int iSubItem, LPCSTR pszText) { ListView_SetItemText(hwndLV, iItem, iSubItem, (LPSTR)pszText); }
-#endif
-#endif
 
 //{{AFX_INSERT_LOCATION}}
 // Microsoft Visual C++ will insert additional declarations immediately before the previous line.

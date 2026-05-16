@@ -9,24 +9,15 @@
 #define NOMINMAX
 #endif
 
-#ifdef __STANDALONE__
 #define __null 0
 #define __WINE_WINCON_H
-#endif
 
 #include <windows.h>
 
-#ifdef __STANDALONE__
 #ifdef GetClassInfo
 #undef GetClassInfo
 #endif
-#endif
 
-#ifndef __STANDALONE__
-#define RPC_NO_WINDOWS_H
-#define COM_NO_WINDOWS_H
-#include <objbase.h>
-#endif
 
 #if defined(ENABLE_DX9)
  #ifdef _DEBUG
@@ -35,14 +26,8 @@
  #include "minid3d9.h"
 #endif
 
-#ifndef __STANDALONE__
-#include <mmsystem.h>
-#endif
 
 #include <atlbase.h>
-#ifndef __STANDALONE__
-#include <atlctl.h>
-#endif
 
 #ifdef _MSC_VER
 #define PATH_SEPARATOR_CHAR '\\'
@@ -54,13 +39,7 @@
 
 #include <oleauto.h>
 
-#ifndef __STANDALONE__
-#include <wincrypt.h>
-#endif
 
-#ifndef __STANDALONE__
-#include <intrin.h>
-#endif
 #if defined(_M_IX86) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2) || defined(__SSE2__) || defined(_M_X64) || defined(_M_AMD64) || defined(__i386__) || defined(__i386) || defined(__i486__) || defined(__i486) || defined(i386) || defined(__ia64__) || defined(__x86_64__)
  #define ENABLE_SSE_OPTIMIZATIONS
  #include <xmmintrin.h>
@@ -86,19 +65,6 @@ using std::string;
 using std::wstring;
 
 
-#ifndef __STANDALONE__
-#include <commdlg.h>
-#include <dlgs.h>
-#include <cderr.h>
-
-#ifndef WM_THEMECHANGED
-  #define WM_THEMECHANGED            0x031A
-#endif
-
-#include <wxx_commondlg.h>		// Add CCommonDialog, CColorDialog, CFileDialog, CFindReplace, CFontDialog 
-#include <wxx_controls.h>		// Add CAnimation, CComboBox, CComboBoxEx, CDateTime, CHeader, CHotKey, CIPAddress, CProgressBar, CSpinButton, CScrollBar, CSlider, CToolTip
-
-#else
 
 #define fopen_s(pFile, filename, mode) (((*(pFile)) = fopen((filename), (mode))) == nullptr)
 #define fprintf_s fprintf
@@ -163,11 +129,9 @@ typedef LPSTR LPTSTR;
 typedef LPCSTR LPCTSTR;
 class PropertyDialog final { };
 class SCNotification final { };
-#endif
 
 #include "utils/Logger.h"
 
-#ifdef __STANDALONE__
 #include <atldef.h>
 #include <atlcom.h>
 #include <atlcomcli.h>
@@ -179,7 +143,6 @@ class SCNotification final { };
 #include <atltypes.h>
 
 #include "standalone/inc/win32xx/win32xx.h"
-#endif
 
 #include "def.h"
 
@@ -194,11 +157,7 @@ class SCNotification final { };
 
 #include "utils/color.h"
 
-#ifndef __STANDALONE__
-#include "vpinball.h"
-#else
 #include "standalone/vpinball_standalone_i.h"
-#endif
 
 #include "core/Settings.h"
 

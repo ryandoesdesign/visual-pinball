@@ -24,9 +24,6 @@ void ShowInfoAndExitCommand::Execute()
       std::cout << m_title << "\n\n";
    if (!m_message.empty())
       std::cout << m_message << "\n\n";
-#ifndef __STANDALONE__
-   ::MessageBox(nullptr, m_message.c_str(), m_title.empty() ? "Visual Pinball" : m_title.c_str(), MB_OK);
-#endif
    exit(m_exitCode);
 }
 
@@ -179,41 +176,6 @@ void PovEditCommand::Execute()
 }
 
 
-#ifndef __STANDALONE__
-Win32EditCommand::Win32EditCommand()
-   : Win32EditCommand(""s)
-{
-}
-
-Win32EditCommand::Win32EditCommand(const std::filesystem::path& tableFilename)
-   : TableBasedCommand(tableFilename)
-{
-}
-
-void Win32EditCommand::Execute()
-{
-   WinEditor vpxEditor(g_app->GetInstanceHandle());
-   g_pvp = &vpxEditor;
-   vpxEditor.m_open_minimized = m_minimized;
-   vpxEditor.m_disable_pause_menu = m_disablePauseMenu;
-   vpxEditor.Create(nullptr);
-   vpxEditor.LoadEditorSetupFromSettings();
-   if (!m_tableFilename.empty() && FileExists(m_tableFilename))
-   {
-      vpxEditor.LoadFileName(m_tableFilename.string(), true);
-      if (!m_tableIniFileName.empty() && FileExists(m_tableIniFileName) && vpxEditor.GetActiveTable())
-         vpxEditor.GetActiveTable()->SetSettingsFileName(m_tableIniFileName);
-   }
-   else if (g_app->m_settings.GetEditor_SelectTableOnStart())
-   {
-      vpxEditor.m_table_played_via_SelectTableOnStart = vpxEditor.LoadFile(false);
-      if (vpxEditor.m_table_played_via_SelectTableOnStart)
-         vpxEditor.DoPlay(0);
-   }
-   g_app->m_winApp.Run();
-   g_pvp = nullptr;
-}
-#endif
 
 
 LiveEditCommand::LiveEditCommand()
@@ -274,23 +236,14 @@ void ValidateTournamentCommand::Execute()
 
 
 
-#ifdef __STANDALONE__
 int g_argc;
 const char **g_argv;
-#endif
 
 enum option_names
 {
    OPTION_H,
    OPTION_HELP,
    OPTION_QMARK,
-#ifndef __STANDALONE__
-   OPTION_UNREGSERVER,
-   OPTION_REGSERVER,
-   OPTION_MINIMIZED,
-   OPTION_EXTMINIMIZED,
-   OPTION_EDIT,
-#endif
 #ifdef _DEBUG
    OPTION_LIVE_EDIT,
 #endif
@@ -334,13 +287,6 @@ static const CommandLineOption options[] = {
    { OPTION_H, "h"s, string() },
    { OPTION_HELP, "help"s, string() },
    { OPTION_QMARK, "?"s, string() },
-#ifndef __STANDALONE__
-   { OPTION_UNREGSERVER, "UnregServer"s, "Unregister VP functions"s },
-   { OPTION_REGSERVER, "RegServer"s,"Register VP functions"s },
-   { OPTION_MINIMIZED, "Minimized"s, "Start the windows editor in the 'invisible' minimized window mode"s },
-   { OPTION_EXTMINIMIZED, "ExtMinimized"s, "Start the windows editor in the 'invisible' minimized window mode, but with enabled Pause Menu"s },
-   { OPTION_EDIT, "Edit"s, "[filename]  Load file into VP"s },
-#endif
 #ifdef _DEBUG
    { OPTION_LIVE_EDIT, "LiveEdit"s, "[opt filename]  Start in live editor mode. if a filename is provided, loads it as the table to edit"s },
 #endif
@@ -405,23 +351,12 @@ string CommandLineProcessor::GetCommandLineHelp()
 
 void CommandLineProcessor::OnCommandLineError(const string& title, const string& message)
 {
-   #ifndef __STANDALONE__
-      MessageBox(nullptr, message.c_str(), title.c_str(), MB_ICONERROR);
-   #else
       std::cout << title << "\n\n" << message << "\n\n";
-   #endif
 }
 
 void CommandLineProcessor::ProcessCommandLine()
 {
-#ifndef __STANDALONE__
-   int nArgs;
-   const char** szArglist = CommandLineToArgvA(GetCommandLine(), &nArgs);
-   ProcessCommandLine(nArgs, szArglist);
-   free(szArglist);
-#else
    ProcessCommandLine(g_argc, g_argv);
-#endif
 }
 
 void CommandLineProcessor::ProcessCommandLine(int nArgs, const char* szArglist[])
@@ -530,31 +465,6 @@ void CommandLineProcessor::ProcessCommandLine(int nArgs, const char* szArglist[]
          }
          break;
 
-      #ifndef __STANDALONE__
-      case OPTION_UNREGSERVER:
-         defaultToWin32Editor = false;
-         VPApp::m_module.UpdateRegistryFromResource(IDR_VPINBALL, FALSE);
-         if (VPApp::m_module.UnregisterServer(TRUE) != S_OK)
-            ShowError("Unregister VP functions failed");
-         exit(0);
-         break;
-
-      case OPTION_REGSERVER:
-         defaultToWin32Editor = false;
-         VPApp::m_module.UpdateRegistryFromResource(IDR_VPINBALL, TRUE);
-         if (VPApp::m_module.RegisterServer(TRUE) != S_OK)
-            ShowError("Register VP functions failed");
-         exit(0);
-         break;
-
-      case OPTION_MINIMIZED:
-         win32EditorMinimized = true;
-         break;
-
-      case OPTION_EXTMINIMIZED:
-         win32EditorExtMinimized = true;
-         break;
-      #endif
 
       case OPTION_PREFPATH:
       {
@@ -618,9 +528,6 @@ void CommandLineProcessor::ProcessCommandLine(int nArgs, const char* szArglist[]
       case OPTION_AUDIT:
       case OPTION_POV:
       case OPTION_EXTRACTVBS:
-      #ifndef __STANDALONE__
-         case OPTION_EDIT:
-      #endif
       {
          if (i + 1 >= nArgs)
          {
@@ -644,9 +551,6 @@ void CommandLineProcessor::ProcessCommandLine(int nArgs, const char* szArglist[]
             case OPTION_AUDIT: commands.push_back(std::make_unique<AuditTableCommand>(tableFileName)); break;
             case OPTION_POV: commands.push_back(std::make_unique<ExportPOVCommand>(tableFileName)); break;
             case OPTION_EXTRACTVBS: commands.push_back(std::make_unique<ExportVBSCommand>(tableFileName)); break;
-            #ifndef __STANDALONE__
-            case OPTION_EDIT: commands.push_back(std::make_unique<Win32EditCommand>(tableFileName)); break;
-            #endif
             }
          }
          break;
@@ -733,10 +637,6 @@ void CommandLineProcessor::ProcessCommandLine(int nArgs, const char* szArglist[]
       }
    }
 
-   #ifndef __STANDALONE__
-   if (defaultToWin32Editor && commands.empty())
-      commands.push_back(std::make_unique<Win32EditCommand>());
-   #endif
    
    if (commands.size() > 1)
    {
@@ -747,35 +647,6 @@ void CommandLineProcessor::ProcessCommandLine(int nArgs, const char* szArglist[]
       return;
    m_command = std::move(commands[0]);
 
-   #ifndef __STANDALONE__
-   if (win32EditorMinimized)
-   {
-      if (auto win32EditCmd = dynamic_cast<Win32EditCommand*>(m_command.get()); win32EditCmd)
-      {
-         win32EditCmd->m_minimized = true;
-         win32EditCmd->m_disablePauseMenu = true;
-      }
-      else
-      {
-         OnCommandLineError("Command Line Error"s, "Option '"s + options[OPTION_MINIMIZED].arg + "' must be used in conjunction with a command that uses the Win32 editor");
-         exit(1);
-      }
-   }
-
-   if (win32EditorExtMinimized)
-   {
-      if (auto win32EditCmd = dynamic_cast<Win32EditCommand*>(m_command.get()); win32EditCmd)
-      {
-         win32EditCmd->m_minimized = true;
-         win32EditCmd->m_disablePauseMenu = false;
-      }
-      else
-      {
-         OnCommandLineError("Command Line Error"s, "Option '"s + options[OPTION_EXTMINIMIZED].arg + "' must be used in conjunction with a command that uses the Win32 editor");
-         exit(1);
-      }
-   }
-   #endif
 
    if (!tableIniFileName.empty())
    {

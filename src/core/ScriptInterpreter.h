@@ -109,9 +109,6 @@ private:
     * > no class object {78a51822-51f4-11d0-8f20-00805f2cd064} could be created for context 0x17
     * ... if I try to create CLSID_ProcessDebugManager
     */
-#ifndef __STANDALONE__
-   IProcessDebugManager *m_pProcessDebugManager = nullptr;
-#endif
 
    const DWORD m_compileContextCookie = 1000;
    const DWORD m_debugContextCookie = 1001;
@@ -121,12 +118,10 @@ private:
       public IDispatchImpl<IVPDebug, &IID_IVPDebug, &LIBID_VPinballLib>,
       public IScriptable
    {
-#ifdef __STANDALONE__
    public:
       STDMETHOD(GetIDsOfNames)(REFIID /*riid*/, LPOLESTR *rgszNames, UINT cNames, LCID lcid, DISPID *rgDispId);
       STDMETHOD(Invoke)(DISPID dispIdMember, REFIID /*riid*/, LCID lcid, WORD wFlags, DISPPARAMS *pDispParams, VARIANT *pVarResult, EXCEPINFO *pExcepInfo, UINT *puArgErr);
       STDMETHOD(GetDocumentation)(INT index, BSTR *pBstrName, BSTR *pBstrDocString, DWORD *pdwHelpContext, BSTR *pBstrHelpFile);
-#endif
       BEGIN_COM_MAP(DebuggerModule)
       COM_INTERFACE_ENTRY(IVPDebug)
       COM_INTERFACE_ENTRY(IDispatch)

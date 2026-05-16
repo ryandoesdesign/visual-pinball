@@ -36,10 +36,6 @@
 #pragma comment(lib, "Psapi")
 #endif
 
-#ifndef __STANDALONE__
-#define SDL_MAIN_NOIMPL
-#include <SDL3/SDL_main.h>
-#endif
 
 #ifdef __LIBVPINBALL__
 #include "lib/src/VPinballLib.h"
@@ -181,13 +177,6 @@ Player::Player(PinTable *const table, const PlayMode playMode)
    g_frameProfiler = &m_logicProfiler;
 
    // Only show the progress dialog in the not minimized Win32 editor mode
-   #ifndef __STANDALONE__
-   if (g_pvp && !g_pvp->IsIconic())
-   {
-      m_progressDialog.Create(g_pvp->GetHwnd());
-      m_progressDialog.ShowWindow(SW_SHOWNORMAL);
-   }
-   #endif
 
    m_progressDialog.SetProgress("Creating Player..."s, 1);
 
@@ -268,20 +257,6 @@ Player::Player(PinTable *const table, const PlayMode playMode)
 
    PLOGI << "Creating main window"; // For profiling
    {
-      #if defined(_MSC_VER) && !defined(__STANDALONE__)
-         WNDCLASS wc = {};
-         wc.hInstance = g_app->GetInstanceHandle();
-         #ifdef _UNICODE
-         wc.lpfnWndProc = ::DefWindowProcW;
-         #else
-         wc.lpfnWndProc = ::DefWindowProcA;
-         #endif
-         wc.lpszClassName = WIN32_PLAYER_WND_CLASSNAME;
-         wc.hIcon = LoadIcon(g_app->GetInstanceHandle(), MAKEINTRESOURCE(IDI_TABLE));
-         wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
-         ::RegisterClass(&wc);
-         SDL_RegisterApp(WIN32_PLAYER_WND_CLASSNAME, 0, g_app->GetInstanceHandle());
-      #endif
       
       const Settings& settings = g_app->m_settings; // Always use main application settings (not overridable per table)
       if (stereo3D == STEREO_VR)
@@ -489,33 +464,6 @@ Player::Player(PinTable *const table, const PlayMode playMode)
    m_liveUI->m_ballControl.LoadSettings(m_ptable->m_settings);
 
    m_ptable->m_tblMirrorEnabled = m_ptable->m_settings.GetPlayer_Mirror();
-   #ifndef __STANDALONE__
-   {
-      const int vkLeftFlip = m_pininput.GetWindowVirtualKeyForAction(m_pininput.GetLeftFlipperActionId());
-      const int vkRightFlip = m_pininput.GetWindowVirtualKeyForAction(m_pininput.GetRightFlipperActionId());
-      const bool leftFlipPressed = (GetAsyncKeyState(VK_LSHIFT) & 0x8000) || ((vkLeftFlip != ~0u) && (GetAsyncKeyState(vkLeftFlip) & 0x8000));
-      const bool rightFlipPressed = (GetAsyncKeyState(VK_RSHIFT) & 0x8000) || ((vkRightFlip != ~0u) && (GetAsyncKeyState(vkRightFlip) & 0x8000));
-
-      // if both flippers are hold, then mirror table
-      if (leftFlipPressed && rightFlipPressed)
-      {
-         PLOGI << "Both flipper buttons detected as pressed during load, enabling table mirroring";
-         m_ptable->m_tblMirrorEnabled = true;
-      }
-
-      // if left flipper is hold during load, then swap DT/FS view (for quick testing)
-      if (m_ptable->GetViewMode() != BG_FSS && !m_ptable->m_tblMirrorEnabled && leftFlipPressed)
-      {
-         PLOGI << "Left flipper button detected as pressed during load, swapping playfield/backglass view";
-         switch (m_ptable->GetViewMode())
-         {
-         case BG_DESKTOP: m_ptable->SetViewSetupOverride(BG_FSS); break;
-         case BG_FSS: m_ptable->SetViewSetupOverride(BG_DESKTOP); break;
-         default: break;
-         }
-      }
-   }
-   #endif
 
    if (m_ptable->m_tblMirrorEnabled)
    {
@@ -716,10 +664,6 @@ Player::Player(PinTable *const table, const PlayMode playMode)
       m_ptable->FireOptionEvent(PinTable::OptionEventType::Initialized);
       m_ptable->FireVoidEvent(DISPID_GameEvents_Paused);
 
-#ifndef __STANDALONE__
-      if (m_detectScriptHang && g_pvp)
-         g_pvp->PostWorkToWorkerThread(HANG_SNOOP_START, NULL);
-#endif
    }
 
    // Apply cabinet autofit (after script startup as the script may change what is visible and therefore taken in account, like a VR cabinet model)
@@ -780,10 +724,6 @@ Player::Player(PinTable *const table, const PlayMode playMode)
    VPinballLib::VPinballLib::SendEvent(VPINBALL_EVENT_PLAYER_STARTED, nullptr);
 #endif
 
-#ifndef __STANDALONE__
-   m_progressDialog.Destroy();
-   LockForegroundWindow(true);
-#endif
 
    // Broadcast a message to notify front-ends that it is 
    // time to reveal the playfield. 
@@ -1015,17 +955,6 @@ Player::~Player()
 
    m_changed_vht.clear();
 
-#ifndef __STANDALONE__
-   if (m_progressDialog.IsWindow())
-      m_progressDialog.Destroy();
-
-   // Close application if requested
-   if (appExitRequested && g_pvp)
-      g_pvp->PostMessage(WM_CLOSE, 0, 0);
-
-   ::UnregisterClass(WIN32_PLAYER_WND_CLASSNAME, g_app->GetInstanceHandle());
-   SDL_UnregisterApp();
-#endif
 
    #ifdef ENABLE_XR
    if (m_vrDevice)
@@ -1167,10 +1096,6 @@ void Player::OnFocusChanged()
 
 void Player::ApplyPlayingState(const bool play)
 {
-   #ifndef __STANDALONE__
-   if(m_debuggerDialog.IsWindow())
-      m_debuggerDialog.SendMessage(RECOMPUTEBUTTONCHECK, 0, 0);
-   #endif
    if (play)
    {
       m_lastKnownGoodCounter++; // Reset hang script detection
@@ -2199,17 +2124,6 @@ void Player::FinishFrame()
       m_debugMode = true;
       m_showDebugger = false;
 
-#ifndef __STANDALONE__
-      if (!m_debuggerDialog.IsWindow())
-      {
-         m_debuggerDialog.Create(m_playfieldWnd->GetNativeHWND());
-         m_debuggerDialog.ShowWindow();
-      }
-      else
-         m_debuggerDialog.SetForegroundWindow();
-
-      EndDialog( g_pvp->GetHwnd(), ID_DEBUGWINDOW );
-#endif
    }
 
    #ifdef _MSC_VER

@@ -55,10 +55,8 @@ inline std::filesystem::path PathFromString(const std::string& s)
 inline std::filesystem::path PathFromString(const std::string& s) { return s; }
 #endif
 
-#ifdef __STANDALONE__
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
-#endif
 #endif
 
 #if defined(__GNUC__) && (__GNUC__ < 12)
@@ -76,11 +74,7 @@ inline std::filesystem::path PathFromString(const std::string& s) { return s; }
 #endif
 
 #if defined(__GNUC__) && (__GNUC__ < 12)
-   #ifdef __STANDALONE__
       #define g_isStandalone true
-   #else
-      #define g_isStandalone false
-   #endif
    #ifdef __LIBVPINBALL__
       #define g_isMobile true
    #else
@@ -97,11 +91,7 @@ inline std::filesystem::path PathFromString(const std::string& s) { return s; }
       #define g_isAndroid false
    #endif
 #else
-   #ifdef __STANDALONE__
       constexpr bool g_isStandalone = true;
-   #else
-      constexpr bool g_isStandalone = false;
-   #endif
    #ifdef __LIBVPINBALL__
       constexpr bool g_isMobile = true;
    #else
@@ -130,28 +120,6 @@ constexpr __forceinline T max(const T x, const T y)
 {
    return x < y ? y : x;
 }
-#if 0 // a bit slower nowadays
-template <>
-__forceinline float min<float>(const float x, const float y)
-{
-   return _mm_cvtss_f32(_mm_min_ss(_mm_set_ss(x),_mm_set_ss(y)));
-}
-template <>
-__forceinline float max<float>(const float x, const float y)
-{
-   return _mm_cvtss_f32(_mm_max_ss(_mm_set_ss(x),_mm_set_ss(y)));
-}
-template <>
-__forceinline double min<double>(const double x, const double y)
-{
-   return _mm_cvtsd_f64(_mm_min_sd(_mm_set_sd(x),_mm_set_sd(y)));
-}
-template <>
-__forceinline double max<double>(const double x, const double y)
-{
-   return _mm_cvtsd_f64(_mm_max_sd(_mm_set_sd(x),_mm_set_sd(y)));
-}
-#endif
 
 template <typename T>
 constexpr __forceinline T clamp(const T x, const T mn, const T mx)
@@ -201,9 +169,6 @@ inline int FindIndexOf(const vector<T>& v, const T& val)
    return -1;
 }
 
-#ifndef __STANDALONE__
-#define BOOL int
-#endif
 
 #define MAXNAMEBUFFER 32 // material and IScriptable names only
 #define MAXSTRING 1024 // usually used for paths,filenames,temporary text buffers,etc
@@ -485,51 +450,9 @@ __forceinline unsigned int swap_byteorder(unsigned int x)
 
 constexpr __forceinline float map_u32_to_unifloat(const unsigned int u) // places all the bits of an (equidistant) u32 number exactly into the matching f32 slots/ranges. For all fp numbers >=1/256 there will be duplicates, but there is no way around that, as not all 32bits can fit perfectly by design (23bit mantissa per exponent)
 {
-#if 0 // platforms that offer a single-op rounding towards 0 (or neginf) could use this:
-    return __uint2float_rz(u) * 2.3283064365386962890625e-10f; // 0x1p-32
-#else
     return static_cast<float>(u & ~(u >> 24)) * 2.3283064365386962890625e-10f; // 0x1p-32
-#endif
 }
 
-#if 0
-//
-// TinyMT64 for random numbers (much better than rand())
-//
-
-#define TINYMT64_SH0 12
-#define TINYMT64_SH1 11
-#define TINYMT64_SH8 8
-#define TINYMT64_MASK 0x7fffffffffffffffull
-//#define TINYMT64_LINEARITY_CHECK
-#define TINYMT64_MAT1 0xfa051f40ull         // can be configured (lower 32bit only, upper=0)
-#define TINYMT64_MAT2 0xffd0fff4ull			// can be configured (lower 32bit only, upper=0)
-#define TINYMT64_TMAT 0x58d02ffeffbfffbcull // can be configured (64bit)
-
-inline uint64_t tinymtu(uint64_t state[2]) {
-   uint64_t x = (state[0] & TINYMT64_MASK) ^ state[1];
-   x ^= x << TINYMT64_SH0;
-   x ^= x >> 32;
-   x ^= x << 32;
-   x ^= x << TINYMT64_SH1;
-   const uint64_t mask = -((int64_t)x & 1);
-   state[0] = state[1] ^ (mask & TINYMT64_MAT1);
-   state[1] = x ^ (mask & (TINYMT64_MAT2 << 32));
-#if defined(TINYMT64_LINEARITY_CHECK)
-   x = state[0] ^ state[1];
-#else
-   x = state[0] + state[1];
-#endif
-   x ^= state[0] >> TINYMT64_SH8;
-   return x ^ (-((int64_t)x & 1) & TINYMT64_TMAT);
-}
-
-extern uint64_t tinymt64state[2];
-
-__forceinline float rand_mt_01()  { return map_u32_to_unifloat(tinymtu(tinymt64state) >> 32); } // [0..1)
-__forceinline float rand_mt_m11() { return (float)((int64_t)tinymtu(tinymt64state) >> (64-25)) * 0.000000059604644775390625f; } // [-1..1)
-
-#else
 
 // via https://cas.ee.ic.ac.uk/people/dt10/research/rngs-gpu-mwc64x.html
 
@@ -546,7 +469,6 @@ constexpr __forceinline unsigned int mwc64x(uint64_t& s)
 
 __forceinline float rand_mt_01()  { return map_u32_to_unifloat(mwc64x(mwc64x_state)); } // [0..1)
 __forceinline float rand_mt_m11() { return (float)((int)mwc64x(mwc64x_state) >> (32-25)) * 0.000000059604644775390625f; } // [-1..1)
-#endif
 
 //
 

@@ -6,9 +6,6 @@
 #include "core/vpversion.h"
 #include "ui/win/WinEditor.h"
 
-#ifndef __STANDALONE__
-#include <initguid.h>
-#endif
 
 // The GUID used to identify the coclass of the VB Script engine {B54F3741-5B07-11cf-A4B0-00AA004A55E8}
 DEFINE_GUID(CLSID_VBScript, 0xb54f3741, 0x5b07, 0x11cf, 0xa4, 0xb0, 0x0, 0xaa, 0x0, 0x4a, 0x55, 0xe8);
@@ -29,43 +26,11 @@ ScriptInterpreter::ScriptInterpreter()
    if (vbScriptResult != S_OK)
       return;
 
-#ifndef __STANDALONE__
-   // This can fail on some systems (I tested with wine 6.9 and this fails)
-   // In that case, m_pProcessDebugManager will remain as nullptr
-   const HRESULT debugResult = CoCreateInstance(CLSID_ProcessDebugManager, 0, CLSCTX_INPROC_SERVER | CLSCTX_INPROC_HANDLER | CLSCTX_LOCAL_SERVER, IID_IProcessDebugManager, (LPVOID *)&m_pProcessDebugManager); //!! dto.?
-
-   // Also check if we have a debugger installed
-   // If not, we should abandon the process debug manager and fall back to plain basic errors
-   IDebugApplication *debugApp;
-   if (SUCCEEDED(GetApplication(&debugApp)))
-   {
-      debugApp->Release();
-   }
-   else
-   {
-      if (m_pProcessDebugManager)
-      {
-         m_pProcessDebugManager->Release();
-         m_pProcessDebugManager = nullptr;
-      }
-   }
-#endif
 
    m_pScriptParse->QueryInterface(IID_IActiveScript, (LPVOID *)&m_pScript);
    m_pScriptParse->QueryInterface(IID_IActiveScriptDebug, (LPVOID *)&m_pScriptDebug);
    m_pScriptParse->InitNew();
 
-#ifndef __STANDALONE__
-   IObjectSafety *pios;
-   m_pScriptParse->QueryInterface(IID_IObjectSafety, (LPVOID *)&pios);
-   if (pios)
-   {
-      DWORD supported, enabled;
-      pios->GetInterfaceSafetyOptions(IID_IActiveScript, &supported, &enabled);
-      pios->SetInterfaceSafetyOptions(IID_IActiveScript, supported, INTERFACE_USES_SECURITY_MANAGER);
-      pios->Release();
-   }
-#endif
 }
 
 ScriptInterpreter::~ScriptInterpreter()
@@ -102,10 +67,6 @@ ScriptInterpreter::~ScriptInterpreter()
       SAFE_RELEASE_NO_RCC(m_pScript);
       SAFE_RELEASE_NO_RCC(m_pScriptParse);
       SAFE_RELEASE(m_pScriptDebug);
-#ifndef __STANDALONE__
-      if (m_pProcessDebugManager != nullptr)
-         m_pProcessDebugManager->Release();
-#endif
    }
    m_pdm->Release();
 }
@@ -228,74 +189,6 @@ void ScriptInterpreter::HandleScriptError(IActiveScriptError *pScriptError, IAct
 
    // Get stack trace
    vector<string> stackDump;
-#ifndef __STANDALONE__
-   if (pScriptDebugError)
-   {
-      if (IDebugStackFrame * errStackFrame; pScriptDebugError->GetStackFrame(&errStackFrame) == S_OK)
-      {
-         IDebugApplicationThread *thread;
-         errStackFrame->GetThread(&thread);
-         if (thread)
-         {
-            IEnumDebugStackFrames *stackFramesEnum;
-            thread->EnumStackFrames(&stackFramesEnum);
-
-            DebugStackFrameDescriptor stackFrames[128];
-            ULONG numStackFrames;
-            stackFramesEnum->Next(128, stackFrames, &numStackFrames);
-
-            for (ULONG i = 0; i < numStackFrames; i++)
-            {
-               std::wstringstream callSite;
-
-               // The frame description is the name of the function in this stack frame
-               BSTR frameDesc;
-               stackFrames[i].pdsf->GetDescriptionString(TRUE, &frameDesc);
-               callSite << frameDesc;
-               SysFreeString(frameDesc);
-
-               // Fetch local variables and args
-               IDebugProperty *debugProp;
-               stackFrames[i].pdsf->GetDebugProperty(&debugProp);
-
-               IEnumDebugPropertyInfo *propInfoEnum;
-               debugProp->EnumMembers(PROP_INFO_FULLNAME | PROP_INFO_VALUE,
-                  10, // Radix (for numerical info)
-                  IID_IDebugPropertyEnumType_LocalsPlusArgs, &propInfoEnum);
-
-               DebugPropertyInfo infos[128];
-               ULONG numInfos;
-               propInfoEnum->Next(128, infos, &numInfos);
-
-               if (numInfos > 0)
-               {
-                  callSite << L" (";
-                  for (ULONG i2 = 0; i2 < numInfos; i2++)
-                  {
-                     callSite << infos[i2].m_bstrFullName << L'=' << infos[i2].m_bstrValue;
-                     SysFreeString(infos[i2].m_bstrFullName);
-                     SysFreeString(infos[i2].m_bstrValue);
-                     // Add a comma if this isn't the last item in the list
-                     if (i2 != numInfos - 1)
-                        callSite << L", ";
-                  }
-                  callSite << L')';
-               }
-
-               propInfoEnum->Release();
-               debugProp->Release();
-
-               stackFrames[i].pdsf->Release();
-
-               stackDump.push_back(MakeString(callSite.str()));
-            }
-
-            stackFramesEnum->Release();
-            thread->Release();
-         }
-      }
-   }
-#endif
 
    DWORD dwCookie;
    ULONG nLine;
@@ -401,9 +294,6 @@ STDMETHODIMP ScriptInterpreter::OnLeaveScript() { return S_OK; }
 STDMETHODIMP ScriptInterpreter::GetWindow(HWND *phwnd)
 {
    // We are supposed to return the window to be used as a parent for modal dialog. Why not just nullptr ?
-#ifndef __STANDALONE__
-   *phwnd = GetDesktopWindow();
-#endif
    return S_OK;
 }
 
@@ -417,27 +307,7 @@ STDMETHODIMP ScriptInterpreter::GetDocumentContextFromPosition(DWORD_PTR dwSourc
 
 STDMETHODIMP ScriptInterpreter::GetApplication(IDebugApplication **ppda)
 {
-#ifndef __STANDALONE__
-   if (m_pProcessDebugManager != nullptr)
-   {
-      IDebugApplication *app;
-      const HRESULT result = m_pProcessDebugManager->GetDefaultApplication(&app);
-
-      // We want to make sure the debug application supports JIT debugging, otherwise we don't seem to get notified
-      // of runtime errors at all (neither in OnScriptError or in OnScriptErrorDebug)!
-      if (SUCCEEDED(result) && app->FCanJitDebug())
-      {
-         *ppda = app;
-         return S_OK;
-      }
-      else
-         return E_FAIL;
-   }
-   else
-      return E_NOTIMPL;
-#else
    return S_OK;
-#endif
 }
 
 STDMETHODIMP ScriptInterpreter::GetRootApplicationNode(IDebugApplicationNode **ppdanRoot)
@@ -491,39 +361,6 @@ DEFINE_GUID(GUID_CUSTOM_CONFIRMOBJECTSAFETY, 0x10200490, 0xfa38, 0x11d0, 0xac, 0
 HRESULT STDMETHODCALLTYPE ScriptInterpreter::QueryCustomPolicy(
    REFGUID guidKey, BYTE __RPC_FAR *__RPC_FAR *ppPolicy, DWORD __RPC_FAR *pcbPolicy, BYTE __RPC_FAR *pContext, DWORD cbContext, DWORD dwReserved)
 {
-#ifndef __STANDALONE__
-   uint32_t *const ppolicy = (uint32_t *)CoTaskMemAlloc(sizeof(uint32_t)); // needs to use CoTaskMemAlloc because of COM model
-   *ppolicy = URLPOLICY_DISALLOW;
-
-   *ppPolicy = (BYTE *)ppolicy;
-
-   *pcbPolicy = sizeof(DWORD);
-
-   if (InlineIsEqualGUID(guidKey, GUID_CUSTOM_CONFIRMOBJECTSAFETY))
-   {
-      bool safe = false;
-      CONFIRMSAFETY *pcs = (CONFIRMSAFETY *)pContext;
-
-      if (g_app->m_securitylevel == eSecurityNone)
-         safe = true;
-
-      if (!safe && ((g_app->m_securitylevel == eSecurityWarnOnUnsafeType) || (g_app->m_securitylevel == eSecurityWarnOnType)))
-         safe = IsControlAlreadyOkayed(pcs);
-
-      if (!safe && (g_app->m_securitylevel <= eSecurityWarnOnUnsafeType))
-         safe = IsControlMarkedSafe(pcs);
-
-      if (!safe)
-      {
-         safe = IsUserManuallyOkaysControl(pcs);
-         if (safe && ((g_app->m_securitylevel == eSecurityWarnOnUnsafeType) || (g_app->m_securitylevel == eSecurityWarnOnType)))
-            AddControlToOkayedList(pcs);
-      }
-
-      if (safe)
-         *ppolicy = URLPOLICY_ALLOW;
-   }
-#endif
 
    return S_OK;
 }
@@ -556,43 +393,13 @@ void ScriptInterpreter::AddControlToOkayedList(const CONFIRMSAFETY *pcs) const
 bool ScriptInterpreter::IsControlMarkedSafe(const CONFIRMSAFETY *pcs)
 {
    bool safe = false;
-#ifndef __STANDALONE__
-   IObjectSafety *pios = nullptr;
-
-   DWORD supported, enabled;
-   if (SUCCEEDED(pcs->pUnk->QueryInterface(IID_IObjectSafety, (void **)&pios)) && SUCCEEDED(pios->GetInterfaceSafetyOptions(IID_IDispatch, &supported, &enabled))
-      && (supported & INTERFACESAFE_FOR_UNTRUSTED_CALLER) && (supported & INTERFACESAFE_FOR_UNTRUSTED_DATA))
-   {
-      // either it is already enabled, or we could enable it
-      if (((enabled & INTERFACESAFE_FOR_UNTRUSTED_CALLER) && (enabled & INTERFACESAFE_FOR_UNTRUSTED_DATA))
-         || SUCCEEDED(pios->SetInterfaceSafetyOptions(IID_IDispatch, supported, INTERFACESAFE_FOR_UNTRUSTED_CALLER | INTERFACESAFE_FOR_UNTRUSTED_DATA)))
-         safe = true;
-   }
-
-   if (pios)
-      pios->Release();
-#endif
 
    return safe;
 }
 
 bool ScriptInterpreter::IsUserManuallyOkaysControl(const CONFIRMSAFETY *pcs) const
 {
-#ifndef __STANDALONE__
-   OLECHAR *wzT;
-   if (FAILED(OleRegGetUserType(pcs->clsid, USERCLASSTYPE_FULL, &wzT)))
-      return false;
-   HWND parent = nullptr;
-   if (parent == nullptr && g_pplayer && !g_pplayer->IsVR())
-      parent = g_pplayer->m_playfieldWnd->GetNativeHWND();
-   if (parent == nullptr && g_pvp)
-      parent = g_pvp->GetHwnd();
-   const int ans = MessageBox(
-      parent, (LocalString(IDS_UNSECURECONTROL1).m_szbuffer + MakeString(wzT) + LocalString(IDS_UNSECURECONTROL2).m_szbuffer).c_str(), "Visual Pinball", MB_YESNO | MB_DEFBUTTON2);
-   return (ans == IDYES);
-#else
    return false;
-#endif
 }
 
 

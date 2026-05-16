@@ -2,9 +2,6 @@
 
 #pragma once
 
-#ifndef __STANDALONE__
-#include <wxx_stdcontrols.h> // Add CButton, CEdit, CListBox
-#endif
 
 #include "audio/AudioPlayer.h"
 #include "core/ScriptInterpreter.h"
@@ -50,37 +47,20 @@ public:
    ProgressDialog() : CDialog(IDD_PROGRESS) { }
 
    void SetProgress(const string &text, const int value = -1) {
-      #ifndef __STANDALONE__
-      if (IsWindow()) {
-         m_progressName.SetWindowText(text.c_str());
-         if (value != -1)
-            m_progressBar.SetPos(value);
-      }
-      #else
       if (value != -1 && m_progress != value) {
          PLOGI.printf("%s %d%%", text.c_str(), value);
          m_progress = value;
       }
-      #endif
    }
 
 protected:
    BOOL OnInitDialog() override
    {
-      #ifndef __STANDALONE__
-      AttachItem(IDC_PROGRESS2, m_progressBar);
-      AttachItem(IDC_STATUSNAME, m_progressName);
-      #endif
       return TRUE;
    }
 
 private:
-   #ifdef __STANDALONE__
    int m_progress = -1;
-   #else
-   CProgressBar m_progressBar;
-   CStatic m_progressName;
-   #endif
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -312,9 +292,6 @@ public:
    bool m_debugMode = false;
    bool m_showDebugger = false;
    HWND m_hwndDebugOutput = nullptr;
-#ifndef __STANDALONE__
-   DebuggerDialog m_debuggerDialog;
-#endif
 
    bool m_debugBalls = false;           // Draw balls in the foreground via 'O' key
 

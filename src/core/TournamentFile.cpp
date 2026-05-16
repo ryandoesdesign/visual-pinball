@@ -4,11 +4,7 @@
 
 #include "TournamentFile.h"
 
-#ifndef __STANDALONE__
-#include "FreeImage.h"
-#else
 #include "standalone/FreeImage.h"
-#endif
 
 namespace VPX::TournamentFile
 {

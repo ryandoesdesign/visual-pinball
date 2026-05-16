@@ -2,13 +2,9 @@
 
 #include "core/stdafx.h"
 
-#ifndef __STANDALONE__
-#include <Intshcut.h>
-#else
 #include <dirent.h>
 #include <sys/stat.h>
 #include "standalone/PoleStorage.h"
-#endif
 
 #include "ui/win/WinEditor.h"
 
@@ -53,7 +49,6 @@ string convert_decimal_point_and_trim(string sz, const bool use_locale) // use_l
 // used by dialogues, etc, locale specific, otherwise use std::from_chars (or e.g. std::stof() (with exception handling) or std::strtof()) directly
 float sz2f(string sz, const bool force_convert_decimal_point)
 {
-#if 1
    if (force_convert_decimal_point || point != '.') // fix locales that use a ',' instead of the C '.' as decimal point
    {
       const size_t pos = sz.find_first_of(force_convert_decimal_point ? ',' : point);
@@ -74,33 +69,12 @@ float sz2f(string sz, const bool force_convert_decimal_point)
    float result;
    return (std::from_chars(sz.c_str(), sz.c_str() + sz.length(), result).ec == std::errc{}) ? result : 0.0f; //!! use inf or NaN instead?
 #endif
-#else
-   const int len = MultiByteToWideChar(CP_ACP, 0, sz.c_str(), -1, nullptr, 0); //(int)sz.length()+1;
-   WCHAR * const wzT = new WCHAR[len];
-   MultiByteToWideChar(CP_ACP, 0, sz.c_str(), -1, wzT, len);
-
-   CComVariant var = wzT;
-
-   float result;
-   if (SUCCEEDED(VariantChangeType(&var, &var, 0, VT_R4)))
-   {
-      result = V_R4(&var);
-      VariantClear(&var);
-   }
-   else
-      result = 0.0f; //!! use inf or NaN instead?
-
-   delete[] wzT;
-
-   return result;
-#endif
 }
 
 // used by dialogues, etc, (optionally) locale specific, otherwise use e.g. std::to_string() directly
 // will also trim all trailing zeros for better readability in the UI
 string f2sz(const float f, const bool can_convert_decimal_point)
 {
-#if 1
    string sz = std::to_string(f);
    const size_t pos = sz.find_first_of('.');
    if (pos != string::npos)
@@ -115,19 +89,6 @@ string f2sz(const float f, const bool can_convert_decimal_point)
    }
 
    return sz;
-#else
-   CComVariant var = f;
-
-   if (SUCCEEDED(VariantChangeType(&var, &var, 0, VT_BSTR)))
-   {
-      const WCHAR * const wzT = V_BSTR(&var);
-      const string tmp = MakeString(wzT);
-      VariantClear(&var);
-      return tmp;
-   }
-   else
-      return "0.0"s; //!! should be localized! i.e. . vs ,
-#endif
 }
 
 wstring f2wz(const float f, const bool can_convert_decimal_point)
@@ -151,14 +112,6 @@ wstring f2wz(const float f, const bool can_convert_decimal_point)
 LocalString::LocalString(const int resid)
 {
    m_szbuffer[0] = '\0';
-#ifndef __STANDALONE__
-   if (resid > 0)
-   {
-      // Note that with the char version of LoadString one cannot get a pointer to the internal buffer directly
-      /*const int cchar =*/LoadString(g_app->GetInstanceHandle(), resid, m_szbuffer, sizeof(m_szbuffer));
-      m_szbuffer[std::size(m_szbuffer)-1] = '\0'; // in case of truncation
-   }
-#else
    static const ankerl::unordered_dense::map<int, const char*> ids_map = {
      { IDS_SCRIPT, "Script" },
      { IDS_TB_BUMPER, "Bumper" },
@@ -184,20 +137,10 @@ LocalString::LocalString(const int resid)
    const ankerl::unordered_dense::map<int, const char*>::const_iterator it = ids_map.find(resid);
    if (it != ids_map.end())
       strncpy_s(m_szbuffer, std::size(m_szbuffer), it->second);
-#endif
 }
 
 LocalStringW::LocalStringW(const int resid)
 {
-#ifndef __STANDALONE__
-   if (resid > 0)
-   {
-      LPWSTR strPtr = nullptr;
-      const int len = LoadStringW(g_app->GetInstanceHandle(), resid, reinterpret_cast<LPWSTR>(&strPtr), 0);
-      if (len > 0 && strPtr)
-         m_buffer = wstring(strPtr, len);
-   }
-#else
    static const ankerl::unordered_dense::map<int, const wstring> ids_map = {
      { IDS_SCRIPT, L"Script"s },
      { IDS_TB_BUMPER, L"Bumper"s },
@@ -223,7 +166,6 @@ LocalStringW::LocalStringW(const int resid)
    const ankerl::unordered_dense::map<int, const wstring>::const_iterator it = ids_map.find(resid);
    if (it != ids_map.end())
       m_buffer = it->second;
-#endif
 }
 
 // Formats a byte size/value into a human-readable string (e.g. 1305486 -> 1.2 MiB).
@@ -484,14 +426,7 @@ void SetThreadName(const std::string& name)
 // This exists such that we only check if we're on wine once, and assign the result of this function to a static const var
 static bool IsOnWineInternal()
 {
-#ifndef __STANDALONE__
-   // See https://www.winehq.org/pipermail/wine-devel/2008-September/069387.html
-   const HMODULE ntdllHandle = GetModuleHandleW(L"ntdll.dll");
-   assert(ntdllHandle != nullptr && "Could not GetModuleHandleW(L\"ntdll.dll\")");
-   return GetProcAddress(ntdllHandle, "wine_get_version") != nullptr;
-#else
    return false;
-#endif
 }
 
 bool IsOnWine()
@@ -827,11 +762,9 @@ vector<string> add_line_numbers(const char* src)
    return result;
 }
 
-#ifdef __STANDALONE__
 
 HRESULT WINAPI StgOpenStorage(const OLECHAR* pwcsName, IStorage* pstgPriority, DWORD grfMode, SNB snbExclude, DWORD reserved, IStorage** ppstgOpen)
 {
    return PoleStorage::Create(MakeString(pwcsName), "/"s, (IStorage**)ppstgOpen);
 }
 
-#endif
