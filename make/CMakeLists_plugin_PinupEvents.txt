@@ -1,8 +1,0 @@
-# plugin CMake file to be included in main project CMakelists
-
-# --- Pinup DMD trigger plugin ---
-
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_C_STANDARD 99)
-
-# Pinup DMD plugin is only available on Windows as is talks to the closed-source Pinup Player

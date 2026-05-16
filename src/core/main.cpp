@@ -22,15 +22,6 @@
 #include <SDL3_ttf/SDL_ttf.h>
 #include <filesystem>
 
-#if defined(__STANDALONE__) && ((defined(__linux__) && !defined(__ANDROID__)) || defined(__MINGW32__))
-#include <csignal>
-
-void OnSignalHandler(int signum)
-{
-   PLOGI.printf("Exiting from signal: %d", signum);
-   exit(-9999);
-}
-#endif
 
 #ifndef OVERRIDE
    #define OVERRIDE
@@ -90,23 +81,3 @@ extern "C" int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, 
    PLOGI << "Closing VPX...\n\n";
    return retval;
 }
-
-#if defined(__STANDALONE__) && ((defined(__linux__) && !defined(__ANDROID__)) || defined(__MINGW32__))
-extern int g_argc;
-extern const char **g_argv;
-int main(int argc, const char** argv) {
-#ifdef __MINGW32__
-   signal(SIGINT, OnSignalHandler);
-#else
-   struct sigaction sigIntHandler;
-   sigIntHandler.sa_handler = OnSignalHandler;
-   sigemptyset(&sigIntHandler.sa_mask);
-   sigIntHandler.sa_flags = 0;
-   sigaction(SIGINT, &sigIntHandler, nullptr);
-#endif
-
-   g_argc = argc;
-   g_argv = argv;
-   return WinMain(NULL, NULL, NULL, 0);
-}
-#endif

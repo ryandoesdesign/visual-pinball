@@ -1669,7 +1669,7 @@ void Renderer::RenderStaticPrepass()
    if (!m_isStaticPrepassDirty)
       return;
 
-   #if defined(ENABLE_OPENGL) && defined(__STANDALONE__)
+   #ifdef ENABLE_OPENGL
    SDL_GL_MakeCurrent(g_pplayer->m_playfieldWnd->GetCore(), g_pplayer->m_renderer->m_renderDevice->m_sdl_context);
    #endif
 
