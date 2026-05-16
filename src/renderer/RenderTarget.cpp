@@ -354,12 +354,8 @@ RenderTarget::RenderTarget(RenderDevice* const rd, const SurfaceType type, const
       {
          if (!m_shared_depth)
          {
-            #ifdef __STANDALONE__
             #ifndef __OPENGLES__
             GLint internalFormat = GL_FLOAT; // Needed for BloodMachine table on standalone (waiting for the table to be updated and remove its hacky turbo insert)
-            #else
-            GLint internalFormat = GL_UNSIGNED_SHORT;
-            #endif
             #else
             GLint internalFormat = GL_UNSIGNED_SHORT;
             #endif

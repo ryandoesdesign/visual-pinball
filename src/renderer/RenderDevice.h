@@ -25,10 +25,6 @@
 #include <semaphore>
 #endif
 
-#if defined(ENABLE_OPENGL) && !defined(__STANDALONE__)
-#include <d3d11.h> // Used to get a VSync source if DWM is not available
-#include "DXGIRegistry.h"
-#endif
 
 #if defined(ENABLE_DX9)
 #define CHECKNVAPI(s) { NvAPI_Status hr = (s); if (hr != NVAPI_OK) { NvAPI_ShortString ss; NvAPI_GetErrorMessage(hr,ss); ShowError(ss); } }
@@ -240,9 +236,6 @@ private:
    RenderState m_current_renderstate, m_renderstate, m_defaultRenderState;
    bool m_logNextFrame = false; // Output a log of next frame to main application log
 
-#if !defined(__STANDALONE__) && !defined(ENABLE_BGFX)
-   bool m_dwm_enabled;
-#endif
 
    std::shared_ptr<MeshBuffer> m_quadMeshBuffer; // internal mesh buffer for rendering quads
 
@@ -332,9 +325,6 @@ public:
    vector<Sampler::SamplerBinding*> m_samplerBindings;
    GLuint m_curVAO = 0;
    SDL_GLContext m_sdl_context = nullptr;
-   #ifndef __STANDALONE__
-      IDXGIOutput* m_DXGIOutput = nullptr;
-   #endif
    std::shared_ptr<MeshBuffer> m_quadPNTDynMeshBuffer; // internal vb for rendering dynamic quads (position/normal/texture)
    std::shared_ptr<MeshBuffer> m_quadPTDynMeshBuffer; // internal vb for rendering dynamic quads (position/texture)
 
@@ -345,9 +335,6 @@ private:
 
    void CaptureGLScreenshot();
 
-   #if !defined(__STANDALONE__)
-   DXGIRegistry m_DXGIRegistry;
-   #endif
 #elif defined(ENABLE_DX9)
 public:
    IDirect3DDevice9* GetCoreDevice() const { return m_pD3DDevice; }

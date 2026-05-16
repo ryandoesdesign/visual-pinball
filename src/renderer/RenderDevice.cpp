@@ -29,18 +29,14 @@
 #include "renderer/SearchTex.h"
 
 #if defined(ENABLE_BGFX)
-#ifdef __STANDALONE__
 #pragma push_macro("_WIN64")
 #undef _WIN64
-#endif
 #include "bx/platform.h"
 #include "bx/string.h"
 #include "bgfx/platform.h"
 #include "bgfx/bgfx.h"
 #include "bimg/bimg.h"
-#ifdef __STANDALONE__
 #pragma pop_macro("_WIN64")
-#endif
 
 #elif defined(ENABLE_OPENGL)
 #include "typedefs3D.h"
@@ -473,9 +469,7 @@ void RenderDevice::RenderThread(RenderDevice* rd, bgfx::Init init)
    // Unlock requesting thread and start render loop
    rd->m_rendererInitialized.release();
 
-#ifdef __STANDALONE__
    std::this_thread::sleep_for(std::chrono::milliseconds(500));
-#endif
 
 #ifdef ENABLE_XR
    if (g_pplayer->m_vrDevice)
@@ -1117,11 +1111,6 @@ RenderDevice::RenderDevice(
       NVAPIinit = false;
    #endif
 
-   #if !defined(__STANDALONE__) && !defined(ENABLE_BGFX)
-      BOOL dwm = 0;
-      DwmIsCompositionEnabled(&dwm);
-      m_dwm_enabled = !!dwm;
-   #endif
 
    assert(g_pplayer != nullptr); // Player must be created to give access to the output window
 
@@ -1307,7 +1296,6 @@ RenderDevice::RenderDevice(
       exit(-1);
    }
 
-   #ifdef __STANDALONE__
    unsigned int num_exts_i = 0;
    glad_glGetIntegerv(GL_NUM_EXTENSIONS, (int*) &num_exts_i);
    PLOGD.printf("%d extensions available", num_exts_i);
@@ -1322,7 +1310,6 @@ RenderDevice::RenderDevice(
    glGetShaderPrecisionFormat(GL_FRAGMENT_SHADER, GL_HIGH_FLOAT, range, &precision);
    PLOGD.printf("Fragment shader high precision float range: %d %d precision: %d", range[0], range[1], precision);
    #endif
-   #endif
 
    const char* renderer = (char*)glGetString(GL_RENDERER);
    const char* vendor = (char*)glGetString(GL_VENDOR);
@@ -1336,14 +1323,6 @@ RenderDevice::RenderDevice(
    glGetIntegerv(GL_MAJOR_VERSION, &gl_majorVersion);
    glGetIntegerv(GL_MINOR_VERSION, &gl_minorVersion);
 
-   #ifndef __STANDALONE__
-   if (gl_majorVersion < 4 || (gl_majorVersion == 4 && gl_minorVersion < 3))
-   {
-      const string errorMsg = "Your graphics card only supports OpenGL " + std::to_string(gl_majorVersion) + '.' + std::to_string(gl_minorVersion) + ", but VPX requires OpenGL 4.3 or newer.";
-      ShowError(errorMsg);
-      exit(-1);
-   }
-   #endif
 
    m_driver_name += "(OpenGL " + std::to_string(gl_majorVersion) + '.' + std::to_string(gl_minorVersion) + ')';
 
@@ -1357,10 +1336,6 @@ RenderDevice::RenderDevice(
    {
       glDebugMessageCallback(GLDebugMessageCallback, nullptr);
    }
-   #endif
-   #if 0
-   glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, nullptr, GL_FALSE); // disable all
-   glDebugMessageControl(GL_DEBUG_SOURCE_API, GL_DEBUG_TYPE_ERROR, GL_DONT_CARE, 0, nullptr, GL_TRUE); // enable only errors
    #endif
 
    // Flip scheduling: 0 for immediate, 1 for synchronized with the vertical retrace, -1 for adaptive vsync (i.e. synchronized on vsync except for late frame)
@@ -1625,31 +1600,11 @@ RenderDevice::RenderDevice(
    
    // Ensure we have a VSync source for frame pacing
    bool hasVSync = false;
-   #if !defined(__STANDALONE__) && !defined(ENABLE_BGFX)
-      if (m_dwm_enabled)
-      {
-         PLOGI << "VSync source set to Windows Desktop compositor (DwmFlush)";
-         hasVSync = true;
-      }
-   #endif
    #if defined(ENABLE_DX9)
       else
       {
          PLOGI << "VSync source set to DX9Ex WaitForBlank";
          hasVSync = true;
-      }
-   #elif defined(ENABLE_OPENGL) && !defined(__STANDALONE__)
-      // DXGI VSync source (Windows 7+, only used for Win32 SDL with OpenGL)
-      else if (syncMode == VideoSyncMode::VSM_FRAME_PACING)
-      {
-         DXGIRegistry::Output* out = m_DXGIRegistry.GetForWindow(m_outputWnd[0]->GetNativeHWND());
-         if (out != nullptr)
-            m_DXGIOutput = out->m_Output;
-         if (m_DXGIOutput != nullptr)
-         {
-            PLOGI << "VSync source set to DXGI WaitForBlank";
-            hasVSync = true;
-         }
       }
    #elif defined(ENABLE_BGFX)
       // BGFX implements frame pacing by monitoring frames in flight (instead of relying on a VSync source)
@@ -2036,20 +1991,6 @@ void RenderDevice::WaitForVSync(const bool asynchronous)
    //   (note that the present parameter does not directly sync: it schedules the flip on vsync, leading the GPU to block on another render call, since no backbuffer is available for drawing then)
    auto lambda = [this]()
    {
-#ifndef __STANDALONE__
-      #if !defined(ENABLE_BGFX)
-      if (m_dwm_enabled)
-         DwmFlush(); // Flush all commands submitted by this process including the 'Present' command. This actually syncs to the vertical blank
-      #endif
-      #if defined(ENABLE_OPENGL)
-      else if (m_DXGIOutput != nullptr)
-         m_DXGIOutput->WaitForVBlank();
-      #elif defined(ENABLE_DX9)
-      // When DWM is disabled (Windows Vista/7), exclusive fullscreen without DWM (pre-windows 10), special Windows builds with DWM stripped out (Ghost Spectre Windows 10)
-      else
-         m_pD3DDeviceEx->WaitForVBlank(0);
-      #endif
-#endif
       m_vsyncCount++;
       m_presentTimestampReference = usec();
    };

@@ -2134,7 +2134,6 @@ void PrecompSplineTonemap(const float displayMaxLum, float out[6])
    constexpr float slope_offset    = 0.2f; //[0..1]
    constexpr float spline_contrast = 0.5f; //[0..1.5]
 
-#if 1
    constexpr float knee_minimum    = 0.1f; //(0..0.5)
    constexpr float knee_maximum    = 0.8f; //(0.5..1.0)
    constexpr float knee_default    = 0.4f; //inbetween min..max
@@ -2175,22 +2174,6 @@ void PrecompSplineTonemap(const float displayMaxLum, float out[6])
    const float src_pivot = pl_hdr_rescale(PL_HDR_PQ, PL_HDR_NITS, src_knee);
    const float dst_pivot = pl_hdr_rescale(PL_HDR_PQ, PL_HDR_NITS, dst_knee);
 
-#else
-
-   //!! old videolan version, may not match the newer code and new constants, but is much simpler to understand!
-   const float sdr_avg = (float)(203.0 / sqrt(1000.0)); // typical contrast
-
-   // Infer the average from scene metadata if present, or default to 10 nits as
-   // this is an industry-standard value that produces good results on average
-   //
-   // Infer the destination from the desired output characteristics, clamping
-   // the lower bound to the characteristics of a typical SDR signal
-   const float src_avg = clamp(10.0f, 0.f, src_hdr_max);
-   const float dst_avg = clamp(sdr_avg, 0.f, displayMaxLum);
-
-   const float src_pivot = min(src_avg, 0.8f * src_hdr_max);
-   const float dst_pivot = min(sqrtf(src_avg * dst_avg), 0.8f * displayMaxLum);
-#endif
 
    // Solve for linear knee (Pa = 0)
    float slope = dst_pivot / src_pivot;

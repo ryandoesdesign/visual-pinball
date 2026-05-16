@@ -10,9 +10,6 @@
 #else
  #include <glad/gles2.h>
 #endif
-#ifndef __STANDALONE__
- #include <SDL3/SDL_opengl.h>
-#endif
  #include <SDL3/SDL.h>
 
 #elif defined(ENABLE_DX9)
@@ -86,14 +83,10 @@ enum VRPreviewMode
 
 #if defined(ENABLE_BGFX)
 
-#ifdef __STANDALONE__
 #pragma push_macro("_WIN64")
 #undef _WIN64
-#endif
 #include "bgfx/bgfx.h"
-#ifdef __STANDALONE__
 #pragma pop_macro("_WIN64")
-#endif
 
 typedef bgfx::VertexLayout VertexDeclaration;
 

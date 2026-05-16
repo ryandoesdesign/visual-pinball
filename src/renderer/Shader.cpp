@@ -11,18 +11,14 @@
 #include "core/vpversion.h"
 
 #if defined(ENABLE_BGFX)
-#ifdef __STANDALONE__
 #pragma push_macro("_WIN64")
 #undef _WIN64
-#endif
 #include "bx/timer.h"
 #include "bx/file.h"
 #include "bx/readerwriter.h"
 #include "bgfx/bgfx.h"
 #include "bgfx/platform.h"
-#ifdef __STANDALONE__
 #pragma pop_macro("_WIN64")
-#endif
 
 #elif defined(ENABLE_OPENGL)
 #define WIN32_LEAN_AND_MEAN
@@ -32,9 +28,7 @@
 #include <fstream>
 #include <string>
 #include "unordered_dense.h"
-#ifdef __STANDALONE__
 #include <sstream>
-#endif
 ShaderTechniques Shader::m_boundTechnique = ShaderTechniques::SHADER_TECHNIQUE_INVALID; // FIXME move to render device
 
 #endif
@@ -585,10 +579,8 @@ Shader::Shader(RenderDevice* renderDevice, const ShaderId id, const bool isStere
    #endif
 
    Load();
-   #ifdef __STANDALONE__
    if (HasError())
       exit(-1);
-   #endif
 
    // Evaluate state size for this shader
    memset(m_stateOffsets, -1, sizeof(m_stateOffsets));
@@ -1987,7 +1979,6 @@ Shader::ShaderTechnique* Shader::compileGLShader(const ShaderTechniques techniqu
          ReportError(errorText, -1, __FILE__, __LINE__);
          success = false;
 
-#ifdef __STANDALONE__
          PLOGE << "vertex:";
          for (const auto& line : add_line_numbers(vertexSource)) {
             PLOGE << line;
@@ -2002,7 +1993,6 @@ Shader::ShaderTechnique* Shader::compileGLShader(const ShaderTechniques techniqu
          for (const auto& line : add_line_numbers(fragmentSource)) {
             PLOGE << line;
          }
-#endif
 
       }
    }
@@ -2172,9 +2162,7 @@ string Shader::PreprocessGLShader(const string& shaderCode) {
          #else
             header += line + '\n';
          #endif
-         #ifdef __STANDALONE__
             header += "#define SHADER_STANDALONE\n"sv;
-         #endif
       }
       else if (line.starts_with("#extension "))
          extensions += line + '\n';

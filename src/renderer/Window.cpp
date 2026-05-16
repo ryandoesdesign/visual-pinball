@@ -11,9 +11,7 @@
 #pragma comment(lib, "dxgi.lib")
 #endif
 
-#ifdef __STANDALONE__
 #include <SDL3_image/SDL_image.h>
-#endif
 
 #ifdef __LIBVPINBALL__
 #include "lib/src/VPinballLib.h"

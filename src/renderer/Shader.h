@@ -3,19 +3,15 @@
 #pragma once
 
 #if defined(ENABLE_BGFX)
-#ifdef __STANDALONE__
 #pragma push_macro("_far")
 #pragma push_macro("_WIN64")
 #undef _far
 #undef _WIN64
-#endif
 #include "bx/readerwriter.h"
 #define BGFX_PLATFORM_SUPPORTS_WGSL 0
 #include "bgfx/embedded_shader.h"
-#ifdef __STANDALONE__
 #pragma pop_macro("_WIN64")
 #pragma pop_macro("_far")
-#endif
 
 #elif defined(ENABLE_OPENGL)
 #ifdef _DEBUG

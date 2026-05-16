@@ -9,13 +9,9 @@
 #include "utils/BiffReader.h"
 #include "utils/lzwreader.h"
 
-#ifndef __STANDALONE__
-#include "FreeImage.h"
-#else
 #include <SDL3_image/SDL_image.h>
 #include <SDL3/SDL_surface.h>
 #include "standalone/FreeImage.h"
-#endif
 
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_ONLY_JPEG // only use the SSE2-JPG path from stbi, as all others are not faster than FreeImage //!! can remove stbi again if at some point FreeImage incorporates libjpeg-turbo or something similar
@@ -23,10 +19,8 @@
 #define STBI_NO_FAILURE_STRINGS
 #include "stb_image.h"
 
-#ifdef __STANDALONE__
 #include <fstream>
 #include <iostream>
-#endif
 
 #define QOI_API static
 #define QOI_IMPLEMENTATION
@@ -417,38 +411,7 @@ std::shared_ptr<BaseTexture> BaseTexture::CreateFromFreeImage(FIBITMAP* dib, con
 
 std::shared_ptr<BaseTexture> BaseTexture::CreateFromHBitmap(const HBITMAP hbmp, unsigned int maxTexDim, bool with_alpha) noexcept
 {
-   #ifdef __STANDALONE__
       return nullptr;
-   #else
-      // from the FreeImage FAQ page
-      BITMAP bm;
-      GetObject(hbmp, sizeof(BITMAP), &bm);
-      FIBITMAP* dib = FreeImage_Allocate(bm.bmWidth, bm.bmHeight, bm.bmBitsPixel);
-      if (!dib)
-         return nullptr;
-      // The GetDIBits function clears the biClrUsed and biClrImportant BITMAPINFO members (don't know why)
-      // So we save these infos below. This is needed for palettized images only.
-      const int nColors = FreeImage_GetColorsUsed(dib);
-      const HDC dc = GetDC(nullptr);
-      /*const int Success =*/ GetDIBits(dc, hbmp, 0, FreeImage_GetHeight(dib),
-         FreeImage_GetBits(dib), FreeImage_GetInfo(dib), DIB_RGB_COLORS);
-      ReleaseDC(nullptr, dc);
-      // restore BITMAPINFO members
-      FreeImage_GetInfoHeader(dib)->biClrUsed = nColors;
-      FreeImage_GetInfoHeader(dib)->biClrImportant = nColors;
-
-      if (!dib)
-         return nullptr;
-      if (with_alpha && FreeImage_GetBPP(dib) == 24)
-      {
-         FIBITMAP* dibConv = FreeImage_ConvertTo32Bits(dib);
-         FreeImage_Unload(dib);
-         dib = dibConv;
-         if (!dib)
-            return nullptr;
-      }
-      return BaseTexture::CreateFromFreeImage(dib, true, maxTexDim, true);
-   #endif
 }
 
 void BaseTexture::Update(std::shared_ptr<BaseTexture>& tex, const unsigned int width, const unsigned int height, const Format texFormat, const void* image)
@@ -538,7 +501,6 @@ bool BaseTexture::Save(const std::filesystem::path& filepath) const
    }
    else
    {
-   #ifdef __STANDALONE__
       if (SDL_Surface* pSurface = ToSDLSurface(); pSurface)
       {
          if (ext == ".png")
@@ -551,26 +513,6 @@ bool BaseTexture::Save(const std::filesystem::path& filepath) const
          SDL_DestroySurface(pSurface);
       }
 
-   #else
-      FIBITMAP* bitmap = FreeImage_Allocate(m_width, m_height, m_format == SRGB ? 24 : 32);
-      if (bitmap)
-      {
-         uint8_t* const __restrict bits = (uint8_t*)FreeImage_GetBits(bitmap);
-         if (m_format == SRGB)
-            copy_bgr_rgb(bits, m_data, m_width * m_height);
-         else
-            copy_bgra_rgba<false>((unsigned int*)bits, (const unsigned int*)m_data, m_width * m_height);
-         FreeImage_FlipVertical(bitmap);
-         if (ext == ".png")
-            success = FreeImage_Save(FIF_PNG, bitmap, filepath.string().c_str(), PNG_Z_DEFAULT_COMPRESSION);
-         else if (ext == ".jpg" || ext == ".jpeg")
-            success = FreeImage_Save(FIF_JPEG, bitmap, filepath.string().c_str(), JPEG_QUALITYGOOD);
-         else if (ext == ".webp")
-            //success = FreeImage_Save(FIF_WEBP, bitmap, _filePath, WEBP_LOSSLESS); // Very slow and very large files (but would be better for our regression tests)
-            success = FreeImage_Save(FIF_WEBP, bitmap, filepath.string().c_str(), WBMP_DEFAULT);
-         FreeImage_Unload(bitmap);
-      }
-   #endif
    }
 
    return success;
@@ -1078,13 +1020,6 @@ Texture* Texture::CreateFromFile(const std::filesystem::path& filename, const bo
 Texture::~Texture()
 {
    delete m_ppb;
-   #ifndef __STANDALONE__
-      if (m_hbmGDIVersion)
-      {
-         if(m_hbmGDIVersion != g_pvp->m_hbmInPlayMode)
-             DeleteObject(m_hbmGDIVersion);
-      }
-   #endif
 }
 
 void Texture::Save(IObjectWriter& writer, PinTable* pt) const
@@ -1152,56 +1087,7 @@ std::shared_ptr<const BaseTexture> Texture::GetRawBitmap(bool resizeOnLowMem, un
 
 HBITMAP Texture::GetGDIBitmap() const
 {
-#ifndef __STANDALONE__
-   if (m_hbmGDIVersion)
-      return m_hbmGDIVersion;
-
-   // GDI is only available and used by Win32 editor
-   assert(g_pvp);
-
-   // only do anything in here (and waste memory/time on it) if UI needed (i.e. if not just -Play via command line is triggered or selected on VPX start with the file popup!)
-   if (g_pvp->m_table_played_via_SelectTableOnStart)
-   {
-      m_hbmGDIVersion = g_pvp->m_hbmInPlayMode;
-      return m_hbmGDIVersion;
-   }
-
-   const auto buffer = GetRawBitmap(false, 0);
-   if (buffer == nullptr)
-   {
-      m_hbmGDIVersion = g_pvp->m_hbmInPlayMode; // We should return an error bitmap
-      return m_hbmGDIVersion;
-   }
-
-   const HDC hdcScreen = GetDC(nullptr);
-   m_hbmGDIVersion = CreateCompatibleBitmap(hdcScreen, m_width, m_height);
-   const HDC hdcNew = CreateCompatibleDC(hdcScreen);
-   const HBITMAP hbmOld = (HBITMAP)SelectObject(hdcNew, m_hbmGDIVersion);
-
-   BITMAPINFO bmi = {};
-   bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-   bmi.bmiHeader.biWidth = m_width;
-   bmi.bmiHeader.biHeight = -(LONG)m_height;
-   bmi.bmiHeader.biPlanes = 1;
-   bmi.bmiHeader.biBitCount = 32;
-   bmi.bmiHeader.biCompression = BI_RGB;
-   bmi.bmiHeader.biSizeImage = 0;
-
-   std::shared_ptr<BaseTexture> bgr32bits = buffer->ToBGRA();
-   SetStretchBltMode(hdcNew, COLORONCOLOR);
-   StretchDIBits(hdcNew,
-      0, 0, m_width, m_height,
-      0, 0, m_width, m_height,
-      bgr32bits->data(), &bmi, DIB_RGB_COLORS, SRCCOPY);
-   bgr32bits = nullptr;
-
-   SelectObject(hdcNew, hbmOld);
-   DeleteDC(hdcNew);
-   ReleaseDC(nullptr, hdcScreen);
-   return m_hbmGDIVersion;
-#else
    return nullptr;
-#endif
 }
 
 void Texture::UpdateMD5() const
