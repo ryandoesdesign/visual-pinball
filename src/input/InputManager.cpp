@@ -13,6 +13,9 @@
 #endif
 
 #include "input/SDLInputHandler.h"
+#if defined(__APPLE__) && defined(__STANDALONE__)
+   #include "input/GCInputHandler.h"
+#endif
 
 #ifndef __LIBVPINBALL__
    #include "input/OpenPinDevHandler.h"
@@ -98,6 +101,13 @@ InputManager::InputManager(Player* player)
    // Initialize device handlers
    m_inputHandlers.push_back(std::make_unique<SDLInputHandler>(*this));
    m_sdlHandler = static_cast<SDLInputHandler*>(m_inputHandlers.back().get());
+   #if defined(__APPLE__) && defined(__STANDALONE__)
+      // Gamepad input on macOS goes through GameController.framework;
+      // SDLInputHandler no longer touches joysticks. Pinball HID
+      // devices (Pinscape, Arcade2TV) aren't visible to GameController
+      // and would need IOHIDManager directly — out of scope.
+      m_inputHandlers.push_back(std::make_unique<GCInputHandler>(*this));
+   #endif
    #ifndef __LIBVPINBALL__
       m_inputHandlers.push_back(std::make_unique<OpenPinDevHandler>(*this));
    #endif

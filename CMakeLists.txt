@@ -50,6 +50,10 @@ add_executable(vpinball
 
    src/input/OpenPinDevHandler.h
    src/input/OpenPinDevHandler.cpp
+   src/input/GCInputHandler.h
+   src/input/GCInputHandler.cpp
+   src/input/GCInputHandlerBridge.h
+   src/input/GCInputHandler_objc.mm
 
    standalone/macos/CBridge.h
    standalone/macos/CBridge.mm
@@ -135,6 +139,7 @@ target_link_libraries(vpinball PUBLIC
    hidapi
    winevbs
    "-framework AppKit"
+   "-framework GameController"
 )
 
 # Configure Info.plist at configure time: substitutes @CMAKE_PROJECT_VERSION@
