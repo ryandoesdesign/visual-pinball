@@ -128,10 +128,17 @@ final class MetalNSView: NSView {
     }
 
     private func notifyIfReady() {
-        guard window != nil,
+        guard let window,
               metalLayer.drawableSize.width > 0,
               metalLayer.drawableSize.height > 0
         else { return }
+        // Hand the NSWindow to the C side. SDL will adopt it instead
+        // of creating its own hidden placeholder. Set BEFORE
+        // notifyLayerReady because the launcher fires vpx_run synchronously
+        // from the layer callback, and vpx_run will reach the SDL window
+        // creation site before returning.
+        let ptr = UnsafeMutableRawPointer(Unmanaged.passUnretained(window).toOpaque())
+        vpx_set_playfield_nswindow(ptr)
         coordinator?.notifyLayerReady(metalLayer)
     }
 

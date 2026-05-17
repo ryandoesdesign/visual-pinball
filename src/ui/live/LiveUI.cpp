@@ -319,14 +319,6 @@ void LiveUI::NewFrame()
    }
 
    // Late mouse position update to latest (async) global state (needed when dragging main windows)
-#if defined(__APPLE__) && defined(__STANDALONE__)
-   // On the macOS SwiftUI shell, the visible window is owned by
-   // SwiftUI; SDL's window is a hidden placeholder parked offscreen,
-   // so the (globalMouse - windowPos) math here produces nonsense
-   // coords that overwrite the correct values our InputForwarder
-   // pushed via SDL_PushEvent. Skip — our mouseDragged events keep
-   // the position fresh enough for window drags.
-#else
    {
       SDL_Point windowPos;
       SDL_FPoint globalMouse;
@@ -334,7 +326,6 @@ void LiveUI::NewFrame()
       SDL_GetWindowPosition(m_player->m_playfieldWnd->GetCore(), &windowPos.x, &windowPos.y);
       AddMousePosEvent(false, globalMouse.x - static_cast<float>(windowPos.x), globalMouse.y - static_cast<float>(windowPos.y));
    }
-#endif
 
    // We implement our own keyboard navigation using flipper keys/gamepad/VR controller
    io.ConfigFlags &= ~ImGuiConfigFlags_NavEnableKeyboard;

@@ -73,12 +73,17 @@ void vpx_push_mouse_motion(float x, float y, float dx, float dy);
 // fractional lines). Positive y scrolls up.
 void vpx_push_mouse_wheel(float x, float y);
 
-// Returns 1 if the playfield (SwiftUI) window is currently the focused
-// window in the system, 0 otherwise. Used by Window::IsFocused() on
-// macOS in place of SDL_GetKeyboardFocus, which would always return
-// "no focus" for our hidden-placeholder SDL window and cause the game
-// to pause on every focus change.
-int vpx_is_playfield_window_key(void);
+// Hand the SwiftUI-owned NSWindow to the C++ side. Called from
+// MetalNSView once it knows its window. The pointer is consumed by
+// Window.cpp on the macOS shell to back SDL's SDL_Window with the
+// SwiftUI NSWindow (via SDL_PROP_WINDOW_CREATE_COCOA_WINDOW_POINTER)
+// rather than letting SDL create its own hidden placeholder.
+//
+// Non-owning: SwiftUI retains the window for the app's lifetime; C
+// just holds a borrowed reference. Typed `void*` to keep this header
+// strictly C-compatible.
+void  vpx_set_playfield_nswindow(void* nsWindow);
+void* vpx_get_playfield_nswindow(void);
 
 #ifdef __cplusplus
 }

@@ -639,16 +639,6 @@ static void ImGui_ImplSDL3_UpdateMouseData()
 
         // (Optional) Fallback to provide mouse position when focused (SDL_EVENT_MOUSE_MOTION already provides this when hovered or captured)
         const bool is_relative_mouse_mode = SDL_GetWindowRelativeMouseMode(bd->Window);
-#if defined(__APPLE__) && defined(__STANDALONE__)
-        // Skip global-state polling on the macOS SwiftUI shell. The
-        // visible window belongs to SwiftUI; SDL's window is a hidden
-        // placeholder parked offscreen, so SDL_GetWindowPosition for it
-        // returns nonsense (e.g. -10000,-10000) and the subtraction
-        // below produces cursor coords well outside the real viewport.
-        // All mouse events arrive via explicit SDL_PushEvent from the
-        // Swift InputForwarder, so the polling fallback isn't needed.
-        (void)is_relative_mouse_mode;
-#else
         if (bd->MouseCanUseGlobalState && bd->MouseButtonsDown == 0 && !is_relative_mouse_mode)
         {
             // Single-viewport mode: mouse position in client window coordinates (io.MousePos is (0,0) when the mouse is on the upper-left corner of the app window)
@@ -658,7 +648,6 @@ static void ImGui_ImplSDL3_UpdateMouseData()
             SDL_GetWindowPosition(focused_window, &window_x, &window_y);
             io.AddMousePosEvent(mouse_x_global - window_x, mouse_y_global - window_y);
         }
-#endif
     }
 }
 

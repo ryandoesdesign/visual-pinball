@@ -20,8 +20,8 @@
 #if defined(__APPLE__) && !defined(__LIBVPINBALL__)
 // SwiftUI-side accessors. Defined in standalone/macos/CBridge.mm.
 // File-scope forward decls because extern "C" isn't legal in block scope.
-extern "C" void vpx_get_metal_layer_size(int* outWidth, int* outHeight);
-extern "C" int  vpx_is_playfield_window_key(void);
+extern "C" void  vpx_get_metal_layer_size(int* outWidth, int* outHeight);
+extern "C" void* vpx_get_playfield_nswindow(void);
 #endif
 
 namespace VPX
@@ -249,6 +249,21 @@ Window::Window(const string& title, const Settings& settings, VPXWindowId window
       SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_FLAGS_NUMBER, wnd_flags);
       if (g_isAndroid)
          SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_EXTERNAL_GRAPHICS_CONTEXT_BOOLEAN, true);
+      #if defined(__APPLE__) && !defined(__LIBVPINBALL__)
+         // Macros that aren't otherwise visible in this TU (CBridge.h
+         // isn't a project include for renderer code). On the macOS
+         // shell, hand SDL the SwiftUI-owned NSWindow so its SDL_Window
+         // is backed by our visible window — no more hidden placeholder
+         // at (-10000, -10000), and SDL_GetKeyboardFocus /
+         // SDL_GetWindowPosition return real values that downstream
+         // consumers (ImGui SDL3 backend, Window::IsFocused) can use
+         // directly. The pointer was stashed by MetalNSView when it
+         // mounted; it's nil here only on the auxiliary windows, which
+         // continue with the regular SDL-created path.
+         if (m_windowId == VPXWindowId::VPXWINDOW_Playfield)
+            if (void* nswnd = vpx_get_playfield_nswindow())
+               SDL_SetPointerProperty(props, SDL_PROP_WINDOW_CREATE_COCOA_WINDOW_POINTER, nswnd);
+      #endif
       m_nwnd = SDL_CreateWindowWithProperties(props);
       SDL_DestroyProperties(props);
    }
@@ -358,16 +373,7 @@ void Window::RaiseAndFocus()
 bool Window::IsFocused() const {
    if (m_isVR)
       return true;
-#if defined(__APPLE__) && !defined(__LIBVPINBALL__)
-   // The SDL window is a hidden bookkeeping placeholder on the macOS
-   // SwiftUI shell; real keyboard focus lives on the SwiftUI NSWindow.
-   // Without this branch, SDL_GetKeyboardFocus always returns nullptr
-   // for our hidden window and the game pauses the moment the SwiftUI
-   // window becomes key (i.e. every time the user clicks on the game).
-   return vpx_is_playfield_window_key() != 0;
-#else
    return m_nwnd == SDL_GetKeyboardFocus();
-#endif
 }
 
 void Window::GetPos(int& x, int& y) const

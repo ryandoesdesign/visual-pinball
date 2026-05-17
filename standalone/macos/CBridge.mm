@@ -156,16 +156,12 @@ void vpx_push_mouse_wheel(float x, float y)
 }
 
 
-int vpx_is_playfield_window_key()
-{
-   // [NSApp isActive] is true whenever any of our app's windows is the
-   // system-key window. Since the SwiftUI shell is a single-window app,
-   // app-active is the right proxy for playfield-focused. (When more
-   // windows arrive — settings sheets, the LiveUI editor — we'll need
-   // to compare the specific Metal view's window against the key
-   // window, but for now this is the simplest correct answer.)
-   return [NSApp isActive] ? 1 : 0;
-}
+static void* g_playfield_nswindow = nullptr;
+
+void vpx_set_playfield_nswindow(void* nsWindow) { g_playfield_nswindow = nsWindow; }
+void* vpx_get_playfield_nswindow(void)          { return g_playfield_nswindow; }
+
+
 
 
 void vpx_pump_runloop_once()
