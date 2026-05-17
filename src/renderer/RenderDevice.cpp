@@ -597,6 +597,7 @@ void RenderDevice::BGFXDesktopRenderLoop(const bgfx::Init& init)
          if (nwh == nullptr)
             continue;
 #endif
+         m_outputWnd[0]->RefreshPlatformPixelSize();
          const int windowWidth = m_outputWnd[0]->GetPixelWidth();
          const int windowHeight = m_outputWnd[0]->GetPixelHeight();
          if ((bgfxVSync != needsVSync) || (windowWidth != backBufferWidth) || (windowHeight != backBufferHeight))

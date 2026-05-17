@@ -61,6 +61,7 @@ public:
    int GetHeight() const { return m_height; }
    int GetPixelWidth() const { return m_pixelWidth; }
    int GetPixelHeight() const { return m_pixelHeight; }
+   void RefreshPlatformPixelSize(); // macOS: re-read CAMetalLayer drawable size so window resize propagates
    float GetAspectRatio() const { return static_cast<float>(m_width) / static_cast<float>(m_height); }
    float GetRefreshRate() const { return m_refreshrate; } // Refresh rate of the device displaying the window. Window spread over multiple devices are not supported.
    bool IsFullScreen() const { return m_fullscreen; }

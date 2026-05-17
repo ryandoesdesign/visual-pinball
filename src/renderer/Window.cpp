@@ -394,6 +394,29 @@ void Window::SetPos(const int x, const int y)
    SDL_SetWindowPosition(m_nwnd, x, y);
 }
 
+void Window::RefreshPlatformPixelSize()
+{
+#if defined(__APPLE__) && !defined(__LIBVPINBALL__)
+   // The CAMetalLayer is owned by the SwiftUI shell and resizes when
+   // the window resizes (Swift's NSView::layout updates drawableSize).
+   // SDL's window size doesn't track that — SDL is just bookkeeping
+   // here — so we poll the layer directly each frame and stash the
+   // result in m_pixelWidth/m_pixelHeight. The RenderDevice's
+   // resize-check (RenderDevice.cpp ~line 600) then sees the change
+   // and calls bgfx::reset + resizes the backbuffer.
+   if (m_windowId == VPXWindowId::VPXWINDOW_Playfield)
+   {
+      int lw = 0, lh = 0;
+      vpx_get_metal_layer_size(&lw, &lh);
+      if (lw > 0 && lh > 0)
+      {
+         m_pixelWidth = lw;
+         m_pixelHeight = lh;
+      }
+   }
+#endif
+}
+
 void Window::SetSize(const int x, const int y)
 {
    if (m_isVR)
