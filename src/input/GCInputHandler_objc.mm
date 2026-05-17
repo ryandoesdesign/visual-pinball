@@ -232,24 +232,35 @@ extern "C" void gc_objc_install(GCInputHandlerRef handler)
 
 extern "C" void gc_objc_uninstall(GCInputHandlerRef handler)
 {
+   // Called from ~GCInputHandler during shutdown. C++ destructors must
+   // not propagate exceptions, and Obj-C runtime errors during teardown
+   // (observer already removed, controller iteration race, NSMapTable
+   // edge cases) become NSExceptions that cross the Obj-C++ boundary
+   // and trigger std::terminate. Swallow + log here so a noisy quit
+   // doesn't abort the process.
    @autoreleasepool {
-      if (g_states == nil)
-         return;
-      NSValue* key = [NSValue valueWithPointer:handler];
-      VPXGamepadState* state = g_states[key];
-      if (state == nil)
-         return;
+      @try {
+         if (g_states == nil)
+            return;
+         NSValue* key = [NSValue valueWithPointer:handler];
+         VPXGamepadState* state = g_states[key];
+         if (state == nil)
+            return;
 
-      NSNotificationCenter* nc = [NSNotificationCenter defaultCenter];
-      if (state.connectObserver)    [nc removeObserver:state.connectObserver];
-      if (state.disconnectObserver) [nc removeObserver:state.disconnectObserver];
+         NSNotificationCenter* nc = [NSNotificationCenter defaultCenter];
+         if (state.connectObserver)    [nc removeObserver:state.connectObserver];
+         if (state.disconnectObserver) [nc removeObserver:state.disconnectObserver];
 
-      // Unregister any still-connected controllers so InputManager
-      // doesn't hold stale device records past our lifetime.
-      NSArray<GCController*>* live = [[state.deviceIds keyEnumerator] allObjects];
-      for (GCController* c in live)
-         unregisterController(state, c);
+         // Unregister any still-connected controllers so InputManager
+         // doesn't hold stale device records past our lifetime.
+         NSArray<GCController*>* live = [[state.deviceIds keyEnumerator] allObjects];
+         for (GCController* c in live)
+            unregisterController(state, c);
 
-      [g_states removeObjectForKey:key];
+         [g_states removeObjectForKey:key];
+      } @catch (NSException* ex) {
+         NSLog(@"[GCInputHandler] uninstall swallowed exception %@: %@",
+               ex.name, ex.reason);
+      }
    }
 }
