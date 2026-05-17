@@ -116,6 +116,11 @@ private:
 public:
    void GameLoop();
 
+   // One iteration of the BGFX MultithreadedGameLoop body, exposed so
+   // an external driver (e.g. a CADisplayLink callback on macOS) can
+   // pace the game at vsync. Called via vpx_tick() in src/core/main.cpp.
+   void Tick();
+
    void UpdateGameLogic();
 
    VideoSyncMode GetVideoSyncMode() const { return m_playMode == Player::PlayMode::CaptureAttract ? VideoSyncMode::VSM_NONE : m_videoSyncMode; }

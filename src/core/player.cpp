@@ -30,6 +30,12 @@
 #include "unordered_dense.h"
 #include "utils/ushock_output.h"
 
+#ifdef __APPLE__
+// Forward-declared at file scope (extern "C" isn't valid in block
+// scope). Defined in standalone/macos/CBridge.mm; pumps NSRunLoop once.
+extern "C" void vpx_pump_runloop_once(void);
+#endif
+
 #ifdef _MSC_VER
 // Used to log which program steals the focus from VPX
 #include "psapi.h"
@@ -1729,6 +1735,27 @@ void Player::GameLoop()
             MultithreadedGameLoop();
          };
          VPinballLib::VPinballLib::Instance().SetGameLoop(gameLoop);
+      #elif defined(__APPLE__)
+         // macOS: SwiftUI owns NSApplication.run(), so we can't block
+         // this thread inside the game's own while loop. Pump the
+         // runloop each iteration (which yields events to AppKit/
+         // SwiftUI) and call Tick() inline. Pump runs ~1ms so we tick
+         // around 1000Hz — not vsync-locked but fast.
+         //
+         // We tried driving Tick() via CADisplayLink (the
+         // Apple-recommended game-loop driver) but the link's callback
+         // never fired from inside our nested runloop pump.
+         //
+         while (GetCloseState() == CS_PLAYING || GetCloseState() == CS_USER_INPUT) {
+            vpx_pump_runloop_once();
+            Tick();
+         }
+         // Flush any pending frame so the destructor below doesn't tear
+         // down the render thread mid-frame.
+         {
+            std::lock_guard lock(m_renderer->m_renderDevice->m_frameMutex);
+            FinishFrame();
+         }
       #else
          MultithreadedGameLoop();
       #endif
@@ -1741,6 +1768,30 @@ void Player::GameLoop()
          GPUQueueStuffingGameLoop();
    #endif
 }
+
+void Player::Tick()
+{
+#ifdef ENABLE_BGFX
+   // One iteration of MultithreadedGameLoop's body. Called from the
+   // CADisplayLink callback on macOS — see vpx_tick() in
+   // src/core/main.cpp and MetalNSView in standalone/macos.
+   if (GetCloseState() != CS_PLAYING && GetCloseState() != CS_USER_INPUT)
+      return;
+
+   UpdateGameLogic();
+
+   if (!m_renderer->m_renderDevice->m_framePending && m_renderer->m_renderDevice->m_frameMutex.try_lock())
+   {
+      FinishFrame();
+      m_lastFrameSyncOnFPS = (m_videoSyncMode != VideoSyncMode::VSM_NONE) && ((m_renderProfiler->GetSlidingAvg(FrameProfiler::PROFILE_FRAME) - 100) * m_playfieldWnd->GetRefreshRate() < 1000000);
+      PrepareFrame();
+      m_renderer->m_renderDevice->m_framePending = true;
+      m_renderer->m_renderDevice->m_frameReadySem.release();
+      m_renderer->m_renderDevice->m_frameMutex.unlock();
+   }
+#endif
+}
+
 
 void Player::MultithreadedGameLoop()
 {

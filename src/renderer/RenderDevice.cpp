@@ -38,6 +38,14 @@
 #include "bimg/bimg.h"
 #pragma pop_macro("_WIN64")
 
+#if BX_PLATFORM_OSX
+// Forward declarations of the C bridge functions. Defined in
+// standalone/macos/CBridge.mm. We forward-declare here so this file
+// stays independent of the standalone/ tree.
+extern "C" void* vpx_get_metal_layer(void);
+extern "C" void  vpx_get_metal_layer_size(int* outWidth, int* outHeight);
+#endif
+
 #elif defined(ENABLE_OPENGL)
 #include "typedefs3D.h"
 #include "TextureManager.h"
@@ -1072,6 +1080,22 @@ RenderDevice::RenderDevice(
    init.fallback = true;
    init.resolution.width = swapchainWnd->GetPixelWidth();
    init.resolution.height = swapchainWnd->GetPixelHeight();
+#if BX_PLATFORM_OSX
+   // The SDL swapchain window is a hidden bookkeeping placeholder sized
+   // from table settings (e.g. 600x900). The actual rendering surface
+   // is the SwiftUI-owned CAMetalLayer, which is sized to the user's
+   // window. Use the layer's real drawableSize so BGFX renders at the
+   // visible aspect ratio instead of stretching to fit.
+   {
+      int lw = 0, lh = 0;
+      vpx_get_metal_layer_size(&lw, &lh);
+      if (lw > 0 && lh > 0)
+      {
+         init.resolution.width = (uint32_t)lw;
+         init.resolution.height = (uint32_t)lh;
+      }
+   }
+#endif
    init.platformData.context = nullptr;
    init.platformData.backBuffer = nullptr;
    init.platformData.backBufferDS = nullptr;
@@ -1086,7 +1110,17 @@ RenderDevice::RenderDevice(
       init.platformData.nwh = SDL_GetPointerProperty(SDL_GetWindowProperties(swapchainWnd->GetCore()), SDL_PROP_WINDOW_WAYLAND_SURFACE_POINTER, NULL);
    }
    #elif BX_PLATFORM_OSX
-   init.platformData.nwh = SDL_GetRenderMetalLayer(SDL_CreateRenderer(swapchainWnd->GetCore(), "Metal"));
+   {
+      // The CAMetalLayer used to come from SDL via
+      // SDL_GetRenderMetalLayer(SDL_CreateRenderer(..., "Metal")) — SDL
+      // would create its own NSView, attach a CAMetalLayer to it, and
+      // hand us the pointer. With the SwiftUI shell, we own the layer
+      // ourselves (it backs the NSView mounted by MetalViewHost) and
+      // pass it down from Swift via VPXLauncher -> vpx_set_metal_layer.
+      void* const layer = vpx_get_metal_layer();
+      assert(layer != nullptr && "SwiftUI must set the CAMetalLayer before BGFX init");
+      init.platformData.nwh = layer;
+   }
    #elif BX_PLATFORM_IOS
    init.platformData.nwh = VPinballLib::VPinballLib::Instance().GetMetalLayer();
    #elif BX_PLATFORM_ANDROID

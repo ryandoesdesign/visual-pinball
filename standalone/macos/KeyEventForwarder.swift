@@ -1,0 +1,242 @@
+// license:GPLv3+
+
+// KeyEventForwarder.swift — translate macOS NSEvents into SDL keyboard
+// events on the SDL queue.
+//
+// SDL3 normally captures keypresses for windows it created itself. With
+// the SwiftUI shell, the user-visible window belongs to SwiftUI; SDL's
+// own window is a hidden placeholder for bookkeeping. We bridge the gap
+// with an NSEvent local monitor — it observes events delivered to our
+// process and forwards keyboard events into SDL via vpx_push_key_event
+// (which calls SDL_PushEvent on the C side). The game's existing
+// SDL_PollEvent loop in Player::ProcessOSMessages drains them
+// unchanged.
+//
+// "Local" monitor means events still propagate to AppKit's responder
+// chain (we return the event from the handler), so menu shortcuts,
+// Cmd-Q, etc. continue to work in parallel.
+
+import AppKit
+
+
+enum KeyEventForwarder {
+    /// One-time installation. Idempotent — the monitor reference is
+    /// retained by AppKit so we don't need to hold it ourselves.
+    static func install() {
+        guard !installed else { return }
+        installed = true
+
+        NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp, .flagsChanged]) { event in
+            forward(event)
+            return event   // pass through; don't consume
+        }
+    }
+
+    private static var installed = false
+
+    private static func forward(_ event: NSEvent) {
+        guard let scancode = scancode(forVirtualKey: event.keyCode) else { return }
+
+        switch event.type {
+        case .keyDown:
+            vpx_push_key_event(1, scancode)
+        case .keyUp:
+            vpx_push_key_event(0, scancode)
+        case .flagsChanged:
+            // NSEvent doesn't emit keyDown/keyUp for modifier keys —
+            // it emits flagsChanged. Derive press state from the
+            // modifier mask. We only care about the modifiers the
+            // game actually binds to (shift for flippers, etc.).
+            if let isDown = modifierStateChange(for: event, scancode: scancode) {
+                vpx_push_key_event(isDown ? 1 : 0, scancode)
+            }
+        default:
+            break
+        }
+    }
+
+    /// Was the modifier whose scancode is `scancode` just pressed (true)
+    /// or just released (false)? Returns nil if we can't tell — e.g.
+    /// flagsChanged fired for a modifier we don't care about.
+    private static func modifierStateChange(for event: NSEvent, scancode: UInt16) -> Bool? {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        switch scancode {
+        case SDL_SCANCODE_LSHIFT, SDL_SCANCODE_RSHIFT:
+            // NSEvent.modifierFlags reports the .shift flag for either
+            // shift key. We don't get individual left/right press state
+            // out of modifierFlags alone, but for our purposes the side
+            // is keyCode-derived (we know which key fired the change);
+            // the flag tells us whether SOMETHING shift-ish is down.
+            return flags.contains(.shift)
+        case SDL_SCANCODE_LCTRL, SDL_SCANCODE_RCTRL:
+            return flags.contains(.control)
+        case SDL_SCANCODE_LALT, SDL_SCANCODE_RALT:
+            return flags.contains(.option)
+        case SDL_SCANCODE_LGUI, SDL_SCANCODE_RGUI:
+            return flags.contains(.command)
+        default:
+            return nil
+        }
+    }
+
+    /// macOS virtual key code (Carbon kVK_*) → SDL_Scancode.
+    /// Only the keys VPX actually binds for default tables are included —
+    /// add more here as needed. A full table would be ~120 entries; we
+    /// don't need them for a working pinball table.
+    private static func scancode(forVirtualKey keyCode: UInt16) -> UInt16? {
+        switch Int(keyCode) {
+        // Modifier keys (flippers + service-menu chording)
+        case 56:  return SDL_SCANCODE_LSHIFT   // kVK_Shift
+        case 60:  return SDL_SCANCODE_RSHIFT   // kVK_RightShift
+        case 59:  return SDL_SCANCODE_LCTRL    // kVK_Control
+        case 62:  return SDL_SCANCODE_RCTRL    // kVK_RightControl
+        case 58:  return SDL_SCANCODE_LALT     // kVK_Option
+        case 61:  return SDL_SCANCODE_RALT     // kVK_RightOption
+        case 55:  return SDL_SCANCODE_LGUI     // kVK_Command
+        case 54:  return SDL_SCANCODE_RGUI     // kVK_RightCommand
+
+        // Common game controls
+        case 49:  return SDL_SCANCODE_SPACE    // kVK_Space
+        case 36:  return SDL_SCANCODE_RETURN   // kVK_Return
+        case 53:  return SDL_SCANCODE_ESCAPE   // kVK_Escape
+        case 51:  return SDL_SCANCODE_BACKSPACE
+        case 48:  return SDL_SCANCODE_TAB
+
+        // Arrows (service menu navigation)
+        case 123: return SDL_SCANCODE_LEFT
+        case 124: return SDL_SCANCODE_RIGHT
+        case 125: return SDL_SCANCODE_DOWN
+        case 126: return SDL_SCANCODE_UP
+
+        // Function row (F1..F12 — often bound to debug/help)
+        case 122: return SDL_SCANCODE_F1
+        case 120: return SDL_SCANCODE_F2
+        case 99:  return SDL_SCANCODE_F3
+        case 118: return SDL_SCANCODE_F4
+        case 96:  return SDL_SCANCODE_F5
+        case 97:  return SDL_SCANCODE_F6
+        case 98:  return SDL_SCANCODE_F7
+        case 100: return SDL_SCANCODE_F8
+        case 101: return SDL_SCANCODE_F9
+        case 109: return SDL_SCANCODE_F10
+        case 103: return SDL_SCANCODE_F11
+        case 111: return SDL_SCANCODE_F12
+
+        // A-Z, 0-9 — kVK_ANSI_* values
+        case 0:   return SDL_SCANCODE_A
+        case 11:  return SDL_SCANCODE_B
+        case 8:   return SDL_SCANCODE_C
+        case 2:   return SDL_SCANCODE_D
+        case 14:  return SDL_SCANCODE_E
+        case 3:   return SDL_SCANCODE_F
+        case 5:   return SDL_SCANCODE_G
+        case 4:   return SDL_SCANCODE_H
+        case 34:  return SDL_SCANCODE_I
+        case 38:  return SDL_SCANCODE_J
+        case 40:  return SDL_SCANCODE_K
+        case 37:  return SDL_SCANCODE_L
+        case 46:  return SDL_SCANCODE_M
+        case 45:  return SDL_SCANCODE_N
+        case 31:  return SDL_SCANCODE_O
+        case 35:  return SDL_SCANCODE_P
+        case 12:  return SDL_SCANCODE_Q
+        case 15:  return SDL_SCANCODE_R
+        case 1:   return SDL_SCANCODE_S
+        case 17:  return SDL_SCANCODE_T
+        case 32:  return SDL_SCANCODE_U
+        case 9:   return SDL_SCANCODE_V
+        case 13:  return SDL_SCANCODE_W
+        case 7:   return SDL_SCANCODE_X
+        case 16:  return SDL_SCANCODE_Y
+        case 6:   return SDL_SCANCODE_Z
+        case 29:  return SDL_SCANCODE_0
+        case 18:  return SDL_SCANCODE_1
+        case 19:  return SDL_SCANCODE_2
+        case 20:  return SDL_SCANCODE_3
+        case 21:  return SDL_SCANCODE_4
+        case 23:  return SDL_SCANCODE_5
+        case 22:  return SDL_SCANCODE_6
+        case 26:  return SDL_SCANCODE_7
+        case 28:  return SDL_SCANCODE_8
+        case 25:  return SDL_SCANCODE_9
+
+        default:  return nil
+        }
+    }
+}
+
+
+/// Lift SDL_Scancode raw values into Swift-typed UInt16 constants so the
+/// switch above doesn't have to call SDL through a generated import for
+/// every comparison. Mirrors SDL_scancode.h. Update if SDL ever
+/// renumbers them (unlikely — they're API-stable).
+private let SDL_SCANCODE_RETURN:    UInt16 = 40
+private let SDL_SCANCODE_ESCAPE:    UInt16 = 41
+private let SDL_SCANCODE_BACKSPACE: UInt16 = 42
+private let SDL_SCANCODE_TAB:       UInt16 = 43
+private let SDL_SCANCODE_SPACE:     UInt16 = 44
+
+private let SDL_SCANCODE_A: UInt16 = 4
+private let SDL_SCANCODE_B: UInt16 = 5
+private let SDL_SCANCODE_C: UInt16 = 6
+private let SDL_SCANCODE_D: UInt16 = 7
+private let SDL_SCANCODE_E: UInt16 = 8
+private let SDL_SCANCODE_F: UInt16 = 9
+private let SDL_SCANCODE_G: UInt16 = 10
+private let SDL_SCANCODE_H: UInt16 = 11
+private let SDL_SCANCODE_I: UInt16 = 12
+private let SDL_SCANCODE_J: UInt16 = 13
+private let SDL_SCANCODE_K: UInt16 = 14
+private let SDL_SCANCODE_L: UInt16 = 15
+private let SDL_SCANCODE_M: UInt16 = 16
+private let SDL_SCANCODE_N: UInt16 = 17
+private let SDL_SCANCODE_O: UInt16 = 18
+private let SDL_SCANCODE_P: UInt16 = 19
+private let SDL_SCANCODE_Q: UInt16 = 20
+private let SDL_SCANCODE_R: UInt16 = 21
+private let SDL_SCANCODE_S: UInt16 = 22
+private let SDL_SCANCODE_T: UInt16 = 23
+private let SDL_SCANCODE_U: UInt16 = 24
+private let SDL_SCANCODE_V: UInt16 = 25
+private let SDL_SCANCODE_W: UInt16 = 26
+private let SDL_SCANCODE_X: UInt16 = 27
+private let SDL_SCANCODE_Y: UInt16 = 28
+private let SDL_SCANCODE_Z: UInt16 = 29
+
+private let SDL_SCANCODE_1: UInt16 = 30
+private let SDL_SCANCODE_2: UInt16 = 31
+private let SDL_SCANCODE_3: UInt16 = 32
+private let SDL_SCANCODE_4: UInt16 = 33
+private let SDL_SCANCODE_5: UInt16 = 34
+private let SDL_SCANCODE_6: UInt16 = 35
+private let SDL_SCANCODE_7: UInt16 = 36
+private let SDL_SCANCODE_8: UInt16 = 37
+private let SDL_SCANCODE_9: UInt16 = 38
+private let SDL_SCANCODE_0: UInt16 = 39
+
+private let SDL_SCANCODE_RIGHT: UInt16 = 79
+private let SDL_SCANCODE_LEFT:  UInt16 = 80
+private let SDL_SCANCODE_DOWN:  UInt16 = 81
+private let SDL_SCANCODE_UP:    UInt16 = 82
+
+private let SDL_SCANCODE_F1:  UInt16 = 58
+private let SDL_SCANCODE_F2:  UInt16 = 59
+private let SDL_SCANCODE_F3:  UInt16 = 60
+private let SDL_SCANCODE_F4:  UInt16 = 61
+private let SDL_SCANCODE_F5:  UInt16 = 62
+private let SDL_SCANCODE_F6:  UInt16 = 63
+private let SDL_SCANCODE_F7:  UInt16 = 64
+private let SDL_SCANCODE_F8:  UInt16 = 65
+private let SDL_SCANCODE_F9:  UInt16 = 66
+private let SDL_SCANCODE_F10: UInt16 = 67
+private let SDL_SCANCODE_F11: UInt16 = 68
+private let SDL_SCANCODE_F12: UInt16 = 69
+
+private let SDL_SCANCODE_LCTRL:  UInt16 = 224
+private let SDL_SCANCODE_LSHIFT: UInt16 = 225
+private let SDL_SCANCODE_LALT:   UInt16 = 226
+private let SDL_SCANCODE_LGUI:   UInt16 = 227
+private let SDL_SCANCODE_RCTRL:  UInt16 = 228
+private let SDL_SCANCODE_RSHIFT: UInt16 = 229
+private let SDL_SCANCODE_RALT:   UInt16 = 230
+private let SDL_SCANCODE_RGUI:   UInt16 = 231

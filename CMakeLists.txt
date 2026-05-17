@@ -14,7 +14,17 @@ string(REGEX MATCH "VP_VERSION_REV[ ]+([0-9]+)" _tmp ${version})
 set(VERSION_REV "${CMAKE_MATCH_1}")
 set(APP_NAME "VPinballX_BGFX")
 
-project(vpinball VERSION "${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_REV}")
+project(vpinball
+   VERSION "${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_REV}"
+   LANGUAGES C CXX OBJC OBJCXX Swift
+)
+
+# Personal-use build — no Developer ID, no notarisation. The Xcode generator
+# tries to sign every dylib by default; turn it off so the build doesn't
+# require a signing identity. These CMAKE_XCODE_ATTRIBUTE_* variables apply
+# to every target created after this point.
+set(CMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED NO)
+set(CMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY "")
 
 include("${CMAKE_SOURCE_DIR}/make/CMakeLists_common_standalone.txt")
 
@@ -41,7 +51,12 @@ add_executable(vpinball
    src/input/OpenPinDevHandler.h
    src/input/OpenPinDevHandler.cpp
 
-   standalone/macos/main.mm
+   standalone/macos/CBridge.h
+   standalone/macos/CBridge.mm
+   standalone/macos/VPXApp.swift
+   standalone/macos/VPXLauncher.swift
+   standalone/macos/MetalViewHost.swift
+   standalone/macos/KeyEventForwarder.swift
 
    third-party/include/imgui/imgui_impl_sdl3.cpp
    third-party/include/imgui/imgui_impl_sdl3.h
@@ -78,14 +93,14 @@ target_compile_definitions(vpinball PRIVATE
 )
 
 target_compile_options(vpinball PUBLIC
-   -Werror=deprecated-declarations
+   $<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:-Werror=deprecated-declarations>
    # The three suppressions below are noise from libwinevbs COM-bridge code
    # (STDMETHOD subclasses missing override, throw() specs, legacy 64->32
    # truncations). Phase 2 of the modernisation roadmap replaces libwinevbs
    # with native Apple frameworks, which will eliminate the need for these.
-   -Wno-inconsistent-missing-override
-   -Wno-missing-exception-spec
-   $<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:
+   $<$<COMPILE_LANGUAGE:CXX,OBJCXX>:-Wno-inconsistent-missing-override>
+   $<$<COMPILE_LANGUAGE:CXX,OBJCXX>:-Wno-missing-exception-spec>
+   $<$<AND:$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>,$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>>:
       -fdenormal-fp-math=preserve-sign
       -freciprocal-math
       -fassociative-math
@@ -94,9 +109,17 @@ target_compile_options(vpinball PUBLIC
       -fno-trapping-math
       -ffp-contract=off
       -Wno-shorten-64-to-32>
-   $<$<CXX_COMPILER_ID:GNU>:
+   $<$<AND:$<CXX_COMPILER_ID:GNU>,$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>>:
       -ffast-math
       -ffp-contract=off>
+
+   # Swift-specific: import CBridge.h as if it were a Swift module so the
+   # C declarations there appear in Swift code with their C names. Same
+   # mechanism as Xcode's SWIFT_OBJC_BRIDGING_HEADER setting, but works
+   # under the Unix Makefiles / Ninja generators too. The SHELL: prefix
+   # tells cmake to pass the two arguments separately rather than gluing
+   # them into one quoted string.
+   "$<$<COMPILE_LANGUAGE:Swift>:SHELL:-import-objc-header ${CMAKE_SOURCE_DIR}/standalone/macos/CBridge.h>"
 )
 
 target_link_directories(vpinball PUBLIC
@@ -114,10 +137,20 @@ target_link_libraries(vpinball PUBLIC
    "-framework AppKit"
 )
 
+# Configure Info.plist at configure time: substitutes @CMAKE_PROJECT_VERSION@
+# so the bundle ships with real CFBundleShortVersionString/CFBundleVersion
+# values rather than the empty strings that the Xcode generator strips out.
+# This replaces the post-build PlistBuddy dance the project used to do.
+configure_file(
+   "${CMAKE_SOURCE_DIR}/standalone/macos/Info_BGFX.plist.in"
+   "${CMAKE_CURRENT_BINARY_DIR}/Info_BGFX.plist"
+   @ONLY
+)
+
 set_target_properties(vpinball PROPERTIES
    RUNTIME_OUTPUT_NAME "${APP_NAME}"
    MACOSX_BUNDLE YES
-   MACOSX_BUNDLE_INFO_PLIST "${CMAKE_SOURCE_DIR}/standalone/macos/Info_BGFX.plist"
+   MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_BINARY_DIR}/Info_BGFX.plist"
 )
 
 add_custom_command(TARGET vpinball POST_BUILD
@@ -128,8 +161,6 @@ add_custom_command(TARGET vpinball POST_BUILD
    COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:vpinball>/../Frameworks"
    COMMAND cp -a "${CMAKE_SOURCE_DIR}/third-party/runtime-libs/macos-arm64/*.dylib" "$<TARGET_FILE_DIR:vpinball>/../Frameworks"
    COMMAND "${CMAKE_COMMAND}" -E copy "${CMAKE_SOURCE_DIR}/standalone/macos/VPinballX.icns" "$<TARGET_FILE_DIR:vpinball>/../Resources"
-   COMMAND /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${CMAKE_PROJECT_VERSION}" $<TARGET_FILE_DIR:vpinball>/../Info.plist
-   COMMAND /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${CMAKE_PROJECT_VERSION}" $<TARGET_FILE_DIR:vpinball>/../Info.plist
 )
 
 set(PluginPlatform "macos")

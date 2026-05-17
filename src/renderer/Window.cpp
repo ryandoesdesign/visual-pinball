@@ -17,6 +17,12 @@
 #include "lib/src/VPinballLib.h"
 #endif
 
+#if defined(__APPLE__) && !defined(__LIBVPINBALL__)
+// SwiftUI-side accessor. Defined in standalone/macos/CBridge.mm.
+// File-scope forward decl because extern "C" isn't legal in block scope.
+extern "C" void vpx_get_metal_layer_size(int* outWidth, int* outHeight);
+#endif
+
 namespace VPX
 {
 
@@ -262,6 +268,25 @@ Window::Window(const string& title, const Settings& settings, VPXWindowId window
 
    SDL_GetWindowSizeInPixels(m_nwnd, &m_pixelWidth, &m_pixelHeight);
 
+#if defined(__APPLE__) && !defined(__LIBVPINBALL__)
+   // On macOS the SwiftUI shell hosts the rendering layer; SDL's
+   // window is a hidden bookkeeping placeholder. Override the pixel
+   // dimensions to match the SwiftUI-owned CAMetalLayer's drawable
+   // size — otherwise the Renderer caches the table-settings size
+   // (e.g. 600x900) and BGFX stretches that image into a differently-
+   // sized SwiftUI window.
+   if (m_windowId == VPXWindowId::VPXWINDOW_Playfield)
+   {
+      int lw = 0, lh = 0;
+      vpx_get_metal_layer_size(&lw, &lh);
+      if (lw > 0 && lh > 0)
+      {
+         m_pixelWidth = lw;
+         m_pixelHeight = lh;
+      }
+   }
+#endif
+
    if (auto icon = BaseTexture::CreateFromFile(g_app->m_fileLocator.GetAppPath(FileLocator::AppSubFolder::Assets, "vpinball.png")); icon)
    {
       SDL_Surface* pSurface = icon->ToSDLSurface();
@@ -296,7 +321,21 @@ void Window::Show(const bool show)
    if (m_isVR)
       return;
    if (show)
+   {
       SDL_ShowWindow(m_nwnd);
+#if defined(__APPLE__) && !defined(__LIBVPINBALL__)
+      // SDL needs its playfield window to be "shown" for its own
+      // bookkeeping (event/swapchain setup), but the user-visible
+      // window is the SwiftUI-hosted one — they should not see SDL's.
+      // Park it far offscreen and shrink it to a single pixel so it
+      // doesn't paint over anything.
+      if (m_windowId == VPXWindowId::VPXWINDOW_Playfield)
+      {
+         SDL_SetWindowPosition(m_nwnd, -10000, -10000);
+         SDL_SetWindowSize(m_nwnd, 1, 1);
+      }
+#endif
+   }
    else
       SDL_HideWindow(m_nwnd);
 }

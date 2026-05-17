@@ -8,3 +8,4 @@ tmp
 
 external
 third-party/*
+src/assets/cache/
