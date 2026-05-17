@@ -98,7 +98,10 @@ if [ "${SDL3_EXPECTED_SHA}" != "${SDL3_FOUND_SHA}" ]; then
 fi
 
 #
-# build freeimage
+# build freeimage  (still needed: Apple's ImageIO doesn't support OpenEXR
+# DWA-A/B compression and the lightweight tinyexr explicitly won't add it.
+# FreeImage covers EXR-DWA decode in Texture.cpp::CreateFromExrViaFreeImage;
+# Phase 5 only succeeded for the non-EXR call sites.)
 #
 
 FREEIMAGE_EXPECTED_SHA="${FREEIMAGE_SHA}"

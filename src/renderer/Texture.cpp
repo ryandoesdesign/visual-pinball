@@ -97,9 +97,11 @@ std::shared_ptr<BaseTexture> BaseTexture::CreateFromFile(const std::filesystem::
 // Apple's ImageIO doesn't support OpenEXR DWA-A or DWA-B compression. Tables
 // in the wild (Medieval Madness, others) embed multi-megabyte DWA-compressed
 // EXR normal/env maps that ImageIO refuses to decode. Detect the EXR magic
-// and route the decode through FreeImage instead — FreeImage handles every
-// EXR compression variant. Phase 5 (drop FreeImage entirely) will swap this
-// for tinyexr or similar.
+// and route the decode through FreeImage. Considered tinyexr first
+// (lightweight, single-header) but its maintainer has explicitly rejected
+// DWA support (PR #168, #212) so it isn't a viable replacement for this
+// codebase. FreeImage stays linked for this one case only — all other
+// FreeImage call sites were migrated to ImageIO.
 static bool isExrHeader(const void* data, size_t size)
 {
    if (size < 4) return false;
@@ -781,39 +783,44 @@ Texture* Texture::CreateFromObjectReader(IObjectReader& reader, PinTable* const 
                   break;
                }
 
-            // Create a FreeImage from LZW data, optionally dropping a constant (0 or 255) alpha channel
-            FIBITMAP* dib = FreeImage_Allocate(width, height, has_alpha ? 32 : 24);
-            uint8_t* const pdst = (uint8_t*)FreeImage_GetBits(dib);
+            // Y-flip the LZW source pixels into a contiguous buffer,
+            // optionally dropping a constant (0 or 255) alpha channel.
+            // Source rows are bottom-up at 4 bytes/pixel (RGBA).
+            const unsigned int channels = has_alpha ? 4 : 3;
             const unsigned int pitch = width * 4;
-            const unsigned int pitch_dst = FreeImage_GetPitch(dib);
+            std::vector<uint8_t> flipped(static_cast<size_t>(width) * height * channels);
             const uint8_t* spch = tmp + (height * pitch);
             for (unsigned int i = 0; i < height; i++)
             {
-               const uint32_t* const __restrict src = (const uint32_t*)(spch -= pitch); // start on previous previous line
-               uint8_t* __restrict dst = pdst + i * pitch_dst;
+               const uint32_t* const __restrict src = reinterpret_cast<const uint32_t*>(spch -= pitch);
+               uint8_t* const __restrict dst = flipped.data() + static_cast<size_t>(i) * width * channels;
                if (has_alpha)
                   memcpy(dst, src, pitch);
                else
-                  copy_rgba_rgb<false>(dst, src, width); // copy without alpha channel
+                  copy_rgba_rgb<false>(dst, src, width);
             }
 
-            // Convert to a lossless webp
-            auto memStream = FreeImage_OpenMemory();
-            FreeImage_SaveToMemory(FREE_IMAGE_FORMAT::FIF_WEBP, dib, memStream, WEBP_LOSSLESS);
+            // Encode as lossless PNG via ImageIO. PNG is a stricter (no
+            // quality-knob) replacement for the original FreeImage WebP
+            // path; the result lives in PinBinary and is later decoded
+            // by the same ImageIO bridge.
+            uint8_t* png_bytes = nullptr;
+            size_t png_size = 0;
+            if (!vpx_imageio_encode_png_to_memory(width, height, channels,
+                                                  flipped.data(),
+                                                  &png_bytes, &png_size))
+               break;
             ppb = new PinBinary();
-            ppb->m_buffer.resize(FreeImage_TellMemory(memStream));
+            ppb->m_buffer.assign(png_bytes, png_bytes + png_size);
+            vpx_imageio_free_buffer(png_bytes);
             ppb->m_name = name;
             const string ext = extension_from_path(path);
             if (!ext.empty())
             {
                path.erase(path.length() - ext.length());
-               path += "webp"sv;
+               path += "png"sv;
             }
             ppb->m_path = PathFromString(path);
-            FreeImage_SeekMemory(memStream, 0, SEEK_SET);
-            FreeImage_ReadMemory(ppb->m_buffer.data(), 1, static_cast<unsigned int>(ppb->m_buffer.size()), memStream);
-            FreeImage_CloseMemory(memStream);
-            FreeImage_Unload(dib);
             break;
          }
          case FID(JPEG): // JPEG may be misleading as this chunk contains original binary image data (in whatever format JPEG, PNG, EXR,...)

@@ -21,6 +21,95 @@ extern "C" void vpx_imageio_free(vpx_imageio_image_t* img) {
    img->pixels_size = 0;
 }
 
+extern "C" void vpx_imageio_free_buffer(void* p) {
+   if (p) std::free(p);
+}
+
+// Build a CGImage from caller-supplied bytes. channels = 1 / 3 / 4.
+// Lifetime: returned CGImage owns a copy of the bytes via CFData; caller
+// retains ownership of src_bytes and may free it after this returns.
+static CGImageRef make_cgimage(uint32_t w, uint32_t h, uint32_t channels,
+                               const uint8_t* src) {
+   if (channels != 1 && channels != 3 && channels != 4) return nullptr;
+   const size_t row = static_cast<size_t>(w) * channels;
+   CFDataRef data = CFDataCreate(kCFAllocatorDefault, src,
+      static_cast<CFIndex>(row * h));
+   if (!data) return nullptr;
+   CGDataProviderRef provider = CGDataProviderCreateWithCFData(data);
+   CFRelease(data);
+   if (!provider) return nullptr;
+
+   CGColorSpaceRef cs = (channels == 1)
+      ? CGColorSpaceCreateWithName(kCGColorSpaceGenericGray)
+      : CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+   if (!cs) { CGDataProviderRelease(provider); return nullptr; }
+
+   CGBitmapInfo info;
+   if (channels == 1)      info = kCGImageAlphaNone;
+   else if (channels == 3) info = kCGImageAlphaNone | kCGBitmapByteOrder32Big;
+   else                    info = kCGImageAlphaLast | kCGBitmapByteOrder32Big;
+
+   CGImageRef img = CGImageCreate(
+      w, h, 8, channels * 8, row, cs, info,
+      provider, nullptr, false, kCGRenderingIntentDefault);
+   CGColorSpaceRelease(cs);
+   CGDataProviderRelease(provider);
+   return img;
+}
+
+extern "C" int vpx_imageio_encode_png_to_memory(uint32_t w, uint32_t h, uint32_t channels,
+                                                const uint8_t* src,
+                                                uint8_t** out_bytes, size_t* out_size) {
+   if (out_bytes) *out_bytes = nullptr;
+   if (out_size) *out_size = 0;
+   if (!src || !out_bytes || !out_size) return 0;
+
+   CGImageRef img = make_cgimage(w, h, channels, src);
+   if (!img) return 0;
+
+   CFMutableDataRef out = CFDataCreateMutable(kCFAllocatorDefault, 0);
+   if (!out) { CGImageRelease(img); return 0; }
+   CGImageDestinationRef dest = CGImageDestinationCreateWithData(
+      out, (CFStringRef)@"public.png", 1, nullptr);
+   if (!dest) { CFRelease(out); CGImageRelease(img); return 0; }
+   CGImageDestinationAddImage(dest, img, nullptr);
+   const bool ok = CGImageDestinationFinalize(dest);
+   CFRelease(dest);
+   CGImageRelease(img);
+
+   if (!ok) { CFRelease(out); return 0; }
+   const CFIndex n = CFDataGetLength(out);
+   uint8_t* buf = static_cast<uint8_t*>(std::malloc(static_cast<size_t>(n)));
+   if (!buf) { CFRelease(out); return 0; }
+   std::memcpy(buf, CFDataGetBytePtr(out), static_cast<size_t>(n));
+   CFRelease(out);
+   *out_bytes = buf;
+   *out_size = static_cast<size_t>(n);
+   return 1;
+}
+
+extern "C" int vpx_imageio_save_png_to_file(uint32_t w, uint32_t h, uint32_t channels,
+                                            const uint8_t* src,
+                                            const char* out_path) {
+   if (!src || !out_path) return 0;
+   CGImageRef img = make_cgimage(w, h, channels, src);
+   if (!img) return 0;
+
+   CFURLRef url = CFURLCreateFromFileSystemRepresentation(
+      kCFAllocatorDefault, reinterpret_cast<const UInt8*>(out_path),
+      static_cast<CFIndex>(std::strlen(out_path)), false);
+   if (!url) { CGImageRelease(img); return 0; }
+   CGImageDestinationRef dest = CGImageDestinationCreateWithURL(
+      url, (CFStringRef)@"public.png", 1, nullptr);
+   CFRelease(url);
+   if (!dest) { CGImageRelease(img); return 0; }
+   CGImageDestinationAddImage(dest, img, nullptr);
+   const bool ok = CGImageDestinationFinalize(dest);
+   CFRelease(dest);
+   CGImageRelease(img);
+   return ok ? 1 : 0;
+}
+
 static int decode_8bit(CGImageRef img, const uint8_t* base, size_t bytesPerRow,
                        CGImageAlphaInfo alpha, CGBitmapInfo bmi,
                        size_t bpp, vpx_imageio_image_t* out) {

@@ -35,7 +35,6 @@
 #include "ui/win/resource.h"
 #include "ui/win/worker.h"
 
-#include "standalone/FreeImage.h"
 
 #ifdef __LIBVPINBALL__
 #include "lib/src/VPinballLib.h"
@@ -102,7 +101,6 @@ SORTDATA SortData;
 WinEditor::WinEditor(HINSTANCE appInstance)
    : m_instance(appInstance)
 {
-   // DLL_API void DLL_CALLCONV FreeImage_Initialise(BOOL load_local_plugins_only FI_DEFAULT(FALSE)); // would only be needed if linking statically
    m_closing = false;
    m_unloadingTable = false;
    m_cref = 0;				//inits Reference Count for IUnknown Interface. Every com Object must 
@@ -127,7 +125,6 @@ WinEditor::WinEditor(HINSTANCE appInstance)
 //Releases Resources for Script editor
 WinEditor::~WinEditor()
 {
-   // DLL_API void DLL_CALLCONV FreeImage_DeInitialise(); // would only be needed if linking statically
    SetClipboard(nullptr);
 }
 

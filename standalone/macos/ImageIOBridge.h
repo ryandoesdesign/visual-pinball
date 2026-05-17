@@ -39,6 +39,22 @@ typedef struct {
 int  vpx_imageio_decode(const void* data, size_t size, vpx_imageio_image_t* out);
 void vpx_imageio_free  (vpx_imageio_image_t* img);
 
+// PNG encode. channels must be 1 (grayscale), 3 (RGB), or 4 (RGBA).
+// Source bytes are top-down, tightly packed, sRGB (linear interpretation
+// for 1-channel). Always lossless.
+//
+// _to_memory: out_bytes is malloc'd, caller frees via vpx_imageio_free_buffer.
+// _to_file:   writes PNG file to out_path; returns 0 on any failure.
+int  vpx_imageio_encode_png_to_memory(uint32_t width, uint32_t height,
+                                      uint32_t channels,
+                                      const uint8_t* src_bytes,
+                                      uint8_t** out_bytes, size_t* out_size);
+int  vpx_imageio_save_png_to_file(uint32_t width, uint32_t height,
+                                  uint32_t channels,
+                                  const uint8_t* src_bytes,
+                                  const char* out_path);
+void vpx_imageio_free_buffer(void* p);
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

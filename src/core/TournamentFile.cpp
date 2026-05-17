@@ -4,7 +4,7 @@
 
 #include "TournamentFile.h"
 
-#include "standalone/FreeImage.h"
+#include "standalone/macos/ImageIOBridge.h"
 
 namespace VPX::TournamentFile
 {
@@ -322,15 +322,15 @@ void GenerateImageFromTournamentFile(PinTable* table, const std::filesystem::pat
       return;
    }
 
-   FIBITMAP *dib = FreeImage_Allocate(x, y, 8);
-   BYTE *const pdst = FreeImage_GetBits(dib);
-   //const unsigned int pitch_dst = FreeImage_GetPitch(dib); //!! needed?
+   // ImageIO expects top-down rows; the source DMD buffer is bottom-up,
+   // so flip y while copying into a contiguous grayscale buffer.
+   std::vector<uint8_t> flipped(static_cast<size_t>(x) * y);
    for (unsigned int j = 0; j < y; j++)
-      for (unsigned int i = 0; i < x; i++)
-         pdst[i + (y - 1 - j) * x] = dmd_data[i + j * x]; // flip y-axis for image output
-   if (!FreeImage_Save(FIF_PNG, dib, (txtfile.string() + ".png").c_str(), PNG_Z_BEST_COMPRESSION))
+      memcpy(flipped.data() + static_cast<size_t>(y - 1 - j) * x,
+             dmd_data.data() + static_cast<size_t>(j) * x, x);
+   if (!vpx_imageio_save_png_to_file(x, y, 1, flipped.data(),
+                                     (txtfile.string() + ".png").c_str()))
       ShowError("Tournament file converted image could not be saved");
-   FreeImage_Unload(dib);
 }
 
 };
