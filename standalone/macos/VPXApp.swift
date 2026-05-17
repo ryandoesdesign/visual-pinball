@@ -95,10 +95,24 @@ final class PickerState: ObservableObject {
 
 
 final class VPXAppDelegate: NSObject, NSApplicationDelegate {
-    func applicationDidFinishLaunching(_ notification: Notification) {
-        // Install the keyboard event forwarder before the game starts
-        // so any early keypresses (Esc to skip startup, etc.) reach SDL.
-        KeyEventForwarder.install()
+    // SwiftUI lifecycle quirk: with @NSApplicationDelegateAdaptor and
+    // the main thread hijacked by vpx_run during MetalNSView setup,
+    // applicationDidFinishLaunching never fires. applicationWillFinish
+    // and applicationDidBecomeActive both still fire — Active runs
+    // when the app is first foregrounded (after the user clicks the
+    // window, or immediately if launched via `open`), which is
+    // sufficient for our needs (input doesn't matter until the user
+    // interacts).
+    func applicationDidBecomeActive(_ notification: Notification) {
+        // Idempotent — safe to call on every activation.
+        InputForwarder.install()
+
+        // When launched from a terminal (running the binary directly
+        // rather than via `open`), macOS may not auto-activate the
+        // process — its window can come up but never become key,
+        // which means the window server routes no input events to us.
+        // No-op for properly-bundled launches.
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     /// Called from the .fileImporter callback when the user cancels or

@@ -1,47 +1,72 @@
 // license:GPLv3+
 
-// KeyEventForwarder.swift — translate macOS NSEvents into SDL keyboard
-// events on the SDL queue.
+// InputForwarder.swift — translate macOS NSEvents into SDL input events
+// on the SDL queue.
 //
-// SDL3 normally captures keypresses for windows it created itself. With
-// the SwiftUI shell, the user-visible window belongs to SwiftUI; SDL's
-// own window is a hidden placeholder for bookkeeping. We bridge the gap
-// with an NSEvent local monitor — it observes events delivered to our
-// process and forwards keyboard events into SDL via vpx_push_key_event
-// (which calls SDL_PushEvent on the C side). The game's existing
-// SDL_PollEvent loop in Player::ProcessOSMessages drains them
-// unchanged.
+// SDL3 normally captures input for windows it created itself. With the
+// SwiftUI shell, the user-visible window belongs to SwiftUI; SDL's own
+// window is a hidden placeholder for bookkeeping. We bridge the gap on
+// the AppKit side and forward events into SDL via vpx_push_*_event
+// (which call SDL_PushEvent on the C side). The game's existing
+// SDL_PollEvent loop in Player::ProcessOSMessages drains them unchanged.
 //
-// "Local" monitor means events still propagate to AppKit's responder
-// chain (we return the event from the handler), so menu shortcuts,
-// Cmd-Q, etc. continue to work in parallel.
+// Two delivery patterns are in use, picked per input class:
+//
+//   • Keyboard: an NSEvent local monitor. Keys have no spatial identity
+//     — they belong to whichever view is first responder — so a global
+//     monitor reads cleanly. "Local" means events still propagate to
+//     AppKit's responder chain (we return the event), so menu
+//     shortcuts and Cmd-Q continue to work.
+//
+//   • Mouse / scroll: AppKit view overrides on MetalNSView itself.
+//     Mouse events are spatial — AppKit's hit testing already routes
+//     them to the right view — so the view receives the event, does
+//     its own coordinate conversion, and calls into the helpers
+//     below. See MetalViewHost.swift for the view-side overrides.
 
 import AppKit
 
 
-enum KeyEventForwarder {
-    /// One-time installation. Idempotent — the monitor reference is
-    /// retained by AppKit so we don't need to hold it ourselves.
+enum InputForwarder {
+    /// One-time installation of the keyboard monitor. Idempotent — the
+    /// monitor reference is retained by AppKit so we don't need to
+    /// hold it ourselves. Mouse forwarding is wired up separately
+    /// inside MetalNSView's responder overrides.
     static func install() {
         guard !installed else { return }
         installed = true
 
         NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp, .flagsChanged]) { event in
-            forward(event)
-            return event   // pass through; don't consume
+            let consumed = forwardKey(event)
+            // If we forwarded the key into SDL we should also consume the
+            // event so AppKit doesn't dispatch it further. Otherwise the
+            // event walks the responder chain, finds nothing to handle
+            // it, and the system beeps. Exception: Cmd-modified keys
+            // are menu equivalents (Cmd-Q etc.) — let those through.
+            if consumed && !event.modifierFlags.contains(.command) {
+                return nil
+            }
+            return event
         }
     }
 
     private static var installed = false
 
-    private static func forward(_ event: NSEvent) {
-        guard let scancode = scancode(forVirtualKey: event.keyCode) else { return }
+    /// Returns true if the event was translated to an SDL event and
+    /// pushed onto the queue. The caller uses this to decide whether
+    /// to consume the NSEvent (preventing AppKit's "unhandled key"
+    /// beep) or let it propagate further down the responder chain.
+    @discardableResult
+    private static func forwardKey(_ event: NSEvent) -> Bool {
+        guard let scancode = scancode(forVirtualKey: event.keyCode) else { return false }
 
         switch event.type {
         case .keyDown:
             vpx_push_key_event(1, scancode)
+            return true
         case .keyUp:
             vpx_push_key_event(0, scancode)
+            return true
         case .flagsChanged:
             // NSEvent doesn't emit keyDown/keyUp for modifier keys —
             // it emits flagsChanged. Derive press state from the
@@ -49,9 +74,11 @@ enum KeyEventForwarder {
             // game actually binds to (shift for flippers, etc.).
             if let isDown = modifierStateChange(for: event, scancode: scancode) {
                 vpx_push_key_event(isDown ? 1 : 0, scancode)
+                return true
             }
+            return false
         default:
-            break
+            return false
         }
     }
 
@@ -122,6 +149,19 @@ enum KeyEventForwarder {
         case 103: return SDL_SCANCODE_F11
         case 111: return SDL_SCANCODE_F12
 
+        // LiveUI / common punctuation
+        case 50:  return SDL_SCANCODE_GRAVE     // ` (backtick — LiveUI default)
+        case 27:  return SDL_SCANCODE_MINUS
+        case 24:  return SDL_SCANCODE_EQUALS
+        case 33:  return SDL_SCANCODE_LEFTBRACKET
+        case 30:  return SDL_SCANCODE_RIGHTBRACKET
+        case 42:  return SDL_SCANCODE_BACKSLASH
+        case 41:  return SDL_SCANCODE_SEMICOLON
+        case 39:  return SDL_SCANCODE_APOSTROPHE
+        case 43:  return SDL_SCANCODE_COMMA
+        case 47:  return SDL_SCANCODE_PERIOD
+        case 44:  return SDL_SCANCODE_SLASH
+
         // A-Z, 0-9 — kVK_ANSI_* values
         case 0:   return SDL_SCANCODE_A
         case 11:  return SDL_SCANCODE_B
@@ -163,6 +203,77 @@ enum KeyEventForwarder {
         default:  return nil
         }
     }
+
+    // MARK: - Mouse forwarding (called from MetalNSView)
+
+    /// Forward a mouse button event from an AppKit responder. `view`
+    /// is the view that received the event (used to translate window
+    /// coordinates into view-local pixel coordinates the game expects).
+    static func forwardMouseButton(_ event: NSEvent, in view: NSView) {
+        guard let button = sdlButton(for: event) else { return }
+        let isDown = event.type == .leftMouseDown
+            || event.type == .rightMouseDown
+            || event.type == .otherMouseDown
+        let (x, y) = pointLocation(of: event, in: view)
+        vpx_push_mouse_button(isDown ? 1 : 0, Int32(button), Float(x), Float(y))
+    }
+
+    /// Forward a mouse motion event (including drag events, which AppKit
+    /// delivers as separate types but the game treats as motion).
+    static func forwardMouseMotion(_ event: NSEvent, in view: NSView) {
+        let (x, y) = pointLocation(of: event, in: view)
+        // NSEvent.deltaY uses Cocoa's bottom-up sign; flip to match
+        // the top-down x/y we just produced.
+        vpx_push_mouse_motion(Float(x), Float(y), Float(event.deltaX), Float(-event.deltaY))
+    }
+
+    /// Forward a scroll wheel event.
+    static func forwardScroll(_ event: NSEvent) {
+        // scrollingDeltaX/Y handles both mouse wheels (line units) and
+        // trackpad continuous scrolling (pixel-ish units, normalised by
+        // AppKit). Pass through as-is; SDL consumers treat the value as
+        // an opaque scroll magnitude.
+        vpx_push_mouse_wheel(Float(event.scrollingDeltaX), Float(event.scrollingDeltaY))
+    }
+
+    /// Translate an NSEvent's locationInWindow into the playfield's
+    /// top-down POINT coordinate space (not pixels — ImGui uses
+    /// DisplaySize in points with a separate FramebufferScale for
+    /// HiDPI, and giving it pixels here would place the cursor at
+    /// 2× the intended position on Retina).
+    ///
+    /// Two steps:
+    ///   1. convert(_:from:nil) → view-local points (still bottom-up)
+    ///   2. flip Y against the view's height for top-left origin
+    private static func pointLocation(of event: NSEvent, in view: NSView) -> (x: CGFloat, y: CGFloat) {
+        let local = view.convert(event.locationInWindow, from: nil)
+        return (local.x, view.bounds.height - local.y)
+    }
+
+    /// Map an NSEvent's mouse-button type onto SDL's button numbering:
+    /// 1 = left, 2 = middle, 3 = right. Returns nil for events we
+    /// don't care about.
+    private static func sdlButton(for event: NSEvent) -> Int? {
+        switch event.type {
+        case .leftMouseDown, .leftMouseUp:
+            return 1
+        case .rightMouseDown, .rightMouseUp:
+            return 3
+        case .otherMouseDown, .otherMouseUp:
+            // NSEvent.buttonNumber: 0=left, 1=right, 2=middle, then 3+
+            // for extra buttons. We've already handled left/right via
+            // the dedicated types above; "other" starts at the middle
+            // button. Translate to SDL's 2=middle, 4=back, 5=forward.
+            switch event.buttonNumber {
+            case 2:  return 2  // middle
+            case 3:  return 4  // back
+            case 4:  return 5  // forward
+            default: return event.buttonNumber + 1
+            }
+        default:
+            return nil
+        }
+    }
 }
 
 
@@ -175,6 +286,18 @@ private let SDL_SCANCODE_ESCAPE:    UInt16 = 41
 private let SDL_SCANCODE_BACKSPACE: UInt16 = 42
 private let SDL_SCANCODE_TAB:       UInt16 = 43
 private let SDL_SCANCODE_SPACE:     UInt16 = 44
+
+private let SDL_SCANCODE_MINUS:        UInt16 = 45
+private let SDL_SCANCODE_EQUALS:       UInt16 = 46
+private let SDL_SCANCODE_LEFTBRACKET:  UInt16 = 47
+private let SDL_SCANCODE_RIGHTBRACKET: UInt16 = 48
+private let SDL_SCANCODE_BACKSLASH:    UInt16 = 49
+private let SDL_SCANCODE_SEMICOLON:    UInt16 = 51
+private let SDL_SCANCODE_APOSTROPHE:   UInt16 = 52
+private let SDL_SCANCODE_GRAVE:        UInt16 = 53
+private let SDL_SCANCODE_COMMA:        UInt16 = 54
+private let SDL_SCANCODE_PERIOD:       UInt16 = 55
+private let SDL_SCANCODE_SLASH:        UInt16 = 56
 
 private let SDL_SCANCODE_A: UInt16 = 4
 private let SDL_SCANCODE_B: UInt16 = 5

@@ -72,31 +72,99 @@ void vpx_get_metal_layer_size(int* outWidth, int* outHeight)
 }
 
 
-void vpx_push_key_event(int isDown, unsigned short scancode)
+// Look up SDL's only window. The game gates per-input handling on the
+// windowID matching the playfield window; with no SDL window adoption
+// our synthesised events would carry windowID=0 and the game would
+// treat them as foreign and drop them. SDL only ever creates one
+// (the hidden bookkeeping window — see CBridge's setup), so it's
+// effectively the playfield as far as the event filter cares.
+static SDL_WindowID GetForwarderWindowID()
 {
-   // The game gates keyboard handling on ev.key.windowID matching the
-   // playfield window (Player::ProcessOSMessages -> SDL_GetWindowFromID).
-   // With no SDL window adoption, our forwarded events would have
-   // windowID=0 and the game would treat them as "not for playfield"
-   // and drop them. Look up SDL's actual window ID (it's the playfield,
-   // since SDL only creates one).
    SDL_WindowID windowID = 0;
    int n = 0;
    SDL_Window** windows = SDL_GetWindows(&n);
-   if (windows != nullptr && n > 0) {
+   if (windows != nullptr && n > 0)
       windowID = SDL_GetWindowID(windows[0]);
-   }
    if (windows) SDL_free(windows);
+   return windowID;
+}
 
+// Arbitrary non-touch, non-pen SDL_MouseID. SDLInputHandler filters out
+// SDL_TOUCH_MOUSEID and SDL_PEN_MOUSEID; any other value is accepted as
+// a real mouse. The game doesn't care which mouse, only that it's not
+// a touch or pen surrogate.
+static constexpr SDL_MouseID kForwarderMouseID = 1;
+
+
+void vpx_push_key_event(int isDown, unsigned short scancode)
+{
    SDL_Event ev = {};
    ev.type = isDown ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP;
    ev.key.timestamp = SDL_GetTicksNS();
-   ev.key.windowID = windowID;
+   ev.key.windowID = GetForwarderWindowID();
    ev.key.scancode = (SDL_Scancode)scancode;
    ev.key.key = SDL_GetKeyFromScancode((SDL_Scancode)scancode, SDL_KMOD_NONE, false);
    ev.key.down = isDown != 0;
    ev.key.repeat = false;
    SDL_PushEvent(&ev);
+}
+
+
+void vpx_push_mouse_button(int isDown, int button, float x, float y)
+{
+   SDL_Event ev = {};
+   ev.type = isDown ? SDL_EVENT_MOUSE_BUTTON_DOWN : SDL_EVENT_MOUSE_BUTTON_UP;
+   ev.button.timestamp = SDL_GetTicksNS();
+   ev.button.windowID = GetForwarderWindowID();
+   ev.button.which = kForwarderMouseID;
+   ev.button.button = (Uint8)button;
+   ev.button.down = isDown != 0;
+   ev.button.clicks = 1;
+   ev.button.x = x;
+   ev.button.y = y;
+   SDL_PushEvent(&ev);
+}
+
+
+void vpx_push_mouse_motion(float x, float y, float dx, float dy)
+{
+   SDL_Event ev = {};
+   ev.type = SDL_EVENT_MOUSE_MOTION;
+   ev.motion.timestamp = SDL_GetTicksNS();
+   ev.motion.windowID = GetForwarderWindowID();
+   ev.motion.which = kForwarderMouseID;
+   ev.motion.state = 0;
+   ev.motion.x = x;
+   ev.motion.y = y;
+   ev.motion.xrel = dx;
+   ev.motion.yrel = dy;
+   SDL_PushEvent(&ev);
+}
+
+
+void vpx_push_mouse_wheel(float x, float y)
+{
+   SDL_Event ev = {};
+   ev.type = SDL_EVENT_MOUSE_WHEEL;
+   ev.wheel.timestamp = SDL_GetTicksNS();
+   ev.wheel.windowID = GetForwarderWindowID();
+   ev.wheel.which = kForwarderMouseID;
+   ev.wheel.x = x;
+   ev.wheel.y = y;
+   ev.wheel.direction = SDL_MOUSEWHEEL_NORMAL;
+   SDL_PushEvent(&ev);
+}
+
+
+int vpx_is_playfield_window_key()
+{
+   // [NSApp isActive] is true whenever any of our app's windows is the
+   // system-key window. Since the SwiftUI shell is a single-window app,
+   // app-active is the right proxy for playfield-focused. (When more
+   // windows arrive — settings sheets, the LiveUI editor — we'll need
+   // to compare the specific Metal view's window against the key
+   // window, but for now this is the simplest correct answer.)
+   return [NSApp isActive] ? 1 : 0;
 }
 
 

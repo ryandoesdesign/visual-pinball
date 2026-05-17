@@ -18,9 +18,10 @@
 #endif
 
 #if defined(__APPLE__) && !defined(__LIBVPINBALL__)
-// SwiftUI-side accessor. Defined in standalone/macos/CBridge.mm.
-// File-scope forward decl because extern "C" isn't legal in block scope.
+// SwiftUI-side accessors. Defined in standalone/macos/CBridge.mm.
+// File-scope forward decls because extern "C" isn't legal in block scope.
 extern "C" void vpx_get_metal_layer_size(int* outWidth, int* outHeight);
+extern "C" int  vpx_is_playfield_window_key(void);
 #endif
 
 namespace VPX
@@ -357,7 +358,16 @@ void Window::RaiseAndFocus()
 bool Window::IsFocused() const {
    if (m_isVR)
       return true;
+#if defined(__APPLE__) && !defined(__LIBVPINBALL__)
+   // The SDL window is a hidden bookkeeping placeholder on the macOS
+   // SwiftUI shell; real keyboard focus lives on the SwiftUI NSWindow.
+   // Without this branch, SDL_GetKeyboardFocus always returns nullptr
+   // for our hidden window and the game pauses the moment the SwiftUI
+   // window becomes key (i.e. every time the user clicks on the game).
+   return vpx_is_playfield_window_key() != 0;
+#else
    return m_nwnd == SDL_GetKeyboardFocus();
+#endif
 }
 
 void Window::GetPos(int& x, int& y) const

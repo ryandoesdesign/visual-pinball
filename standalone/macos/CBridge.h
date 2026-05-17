@@ -60,6 +60,26 @@ void vpx_pump_runloop_once(void);
 // isDown is 1 for key-down, 0 for key-up.
 void vpx_push_key_event(int isDown, unsigned short scancode);
 
+// Push a synthesised mouse button event. button is 1=left, 2=middle,
+// 3=right (the SDL convention). x/y are pixel coordinates in the
+// playfield's top-down coordinate space (origin top-left).
+void vpx_push_mouse_button(int isDown, int button, float x, float y);
+
+// Push a synthesised mouse motion event. dx/dy are deltas since the
+// previous motion (SDL fills xrel/yrel from these).
+void vpx_push_mouse_motion(float x, float y, float dx, float dy);
+
+// Push a synthesised scroll wheel event. x/y are scroll deltas (lines or
+// fractional lines). Positive y scrolls up.
+void vpx_push_mouse_wheel(float x, float y);
+
+// Returns 1 if the playfield (SwiftUI) window is currently the focused
+// window in the system, 0 otherwise. Used by Window::IsFocused() on
+// macOS in place of SDL_GetKeyboardFocus, which would always return
+// "no focus" for our hidden-placeholder SDL window and cause the game
+// to pause on every focus change.
+int vpx_is_playfield_window_key(void);
+
 #ifdef __cplusplus
 }
 #endif

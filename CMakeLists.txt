@@ -56,7 +56,7 @@ add_executable(vpinball
    standalone/macos/VPXApp.swift
    standalone/macos/VPXLauncher.swift
    standalone/macos/MetalViewHost.swift
-   standalone/macos/KeyEventForwarder.swift
+   standalone/macos/InputForwarder.swift
 
    third-party/include/imgui/imgui_impl_sdl3.cpp
    third-party/include/imgui/imgui_impl_sdl3.h

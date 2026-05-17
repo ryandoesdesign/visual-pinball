@@ -101,12 +101,6 @@ final class MetalNSView: NSView {
         wantsLayer = true
     }
 
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        updateDrawableSize()
-        notifyIfReady()
-    }
-
     override func layout() {
         super.layout()
         updateDrawableSize()
@@ -140,4 +134,60 @@ final class MetalNSView: NSView {
         else { return }
         coordinator?.notifyLayerReady(metalLayer)
     }
+
+    // MARK: - Mouse input
+
+    // AppKit delivers mouse events to the view that hit-tests under the
+    // cursor. Buttons and drags come for free; mouseMoved (no button
+    // pressed) requires either a window-wide acceptsMouseMovedEvents
+    // flag or a per-view tracking area. We use a tracking area so the
+    // delivery is scoped to this view — cleaner than mutating window
+    // state we don't own (SwiftUI does).
+
+    private var trackingArea: NSTrackingArea?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        updateDrawableSize()
+        notifyIfReady()
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let existing = trackingArea {
+            removeTrackingArea(existing)
+        }
+        // .inVisibleRect makes AppKit recompute the rect on every layout
+        // pass (so .zero is fine here — it's ignored). .activeInKeyWindow
+        // delivers events only while the window has key focus, matching
+        // SDL's normal behaviour.
+        let area = NSTrackingArea(
+            rect: .zero,
+            options: [.mouseMoved, .activeInKeyWindow, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        trackingArea = area
+    }
+
+    // Click-through: accept the first click that activates our window
+    // without requiring a second click after focus. acceptsFirstResponder
+    // lets us be the first responder if anything in the stack tries to
+    // set us as such (the keyboard NSEvent monitor doesn't need this,
+    // but it's the conventional pair).
+    override var acceptsFirstResponder: Bool { true }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func mouseDown(with event: NSEvent)          { InputForwarder.forwardMouseButton(event, in: self) }
+    override func mouseUp(with event: NSEvent)            { InputForwarder.forwardMouseButton(event, in: self) }
+    override func mouseDragged(with event: NSEvent)       { InputForwarder.forwardMouseMotion(event, in: self) }
+    override func rightMouseDown(with event: NSEvent)     { InputForwarder.forwardMouseButton(event, in: self) }
+    override func rightMouseUp(with event: NSEvent)       { InputForwarder.forwardMouseButton(event, in: self) }
+    override func rightMouseDragged(with event: NSEvent)  { InputForwarder.forwardMouseMotion(event, in: self) }
+    override func otherMouseDown(with event: NSEvent)     { InputForwarder.forwardMouseButton(event, in: self) }
+    override func otherMouseUp(with event: NSEvent)       { InputForwarder.forwardMouseButton(event, in: self) }
+    override func otherMouseDragged(with event: NSEvent)  { InputForwarder.forwardMouseMotion(event, in: self) }
+    override func mouseMoved(with event: NSEvent)         { InputForwarder.forwardMouseMotion(event, in: self) }
+    override func scrollWheel(with event: NSEvent)        { InputForwarder.forwardScroll(event) }
 }
