@@ -12,6 +12,7 @@
 #include <SDL3_image/SDL_image.h>
 #include <SDL3/SDL_surface.h>
 #include "standalone/FreeImage.h"
+#include "standalone/macos/ImageIOBridge.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_ONLY_JPEG // only use the SSE2-JPG path from stbi, as all others are not faster than FreeImage //!! can remove stbi again if at some point FreeImage incorporates libjpeg-turbo or something similar
@@ -93,6 +94,88 @@ std::shared_ptr<BaseTexture> BaseTexture::CreateFromFile(const std::filesystem::
    return CreateFromData(ppb.m_buffer.data(), ppb.m_buffer.size(), true, maxTexDimension, resizeOnLowMem);
 }
 
+// Apple's ImageIO doesn't support OpenEXR DWA-A or DWA-B compression. Tables
+// in the wild (Medieval Madness, others) embed multi-megabyte DWA-compressed
+// EXR normal/env maps that ImageIO refuses to decode. Detect the EXR magic
+// and route the decode through FreeImage instead — FreeImage handles every
+// EXR compression variant. Phase 5 (drop FreeImage entirely) will swap this
+// for tinyexr or similar.
+static bool isExrHeader(const void* data, size_t size)
+{
+   if (size < 4) return false;
+   const uint8_t* b = static_cast<const uint8_t*>(data);
+   return b[0] == 0x76 && b[1] == 0x2f && b[2] == 0x31 && b[3] == 0x01;
+}
+
+static std::shared_ptr<BaseTexture> CreateFromExrViaFreeImage(const void* data, size_t size) noexcept
+{
+   FIMEMORY* mem = FreeImage_OpenMemory(reinterpret_cast<BYTE*>(const_cast<void*>(data)),
+                                        static_cast<DWORD>(size));
+   if (!mem) return nullptr;
+   FIBITMAP* dib = FreeImage_LoadFromMemory(FIF_EXR, mem, 0);
+   FreeImage_CloseMemory(mem);
+   if (!dib) return nullptr;
+
+   const FREE_IMAGE_TYPE t = FreeImage_GetImageType(dib);
+   FIBITMAP* rgbf = (t == FIT_RGBF) ? dib : FreeImage_ConvertToRGBF(dib);
+   if (!rgbf) { FreeImage_Unload(dib); return nullptr; }
+   if (rgbf != dib) FreeImage_Unload(dib);
+
+   const unsigned int w = FreeImage_GetWidth(rgbf);
+   const unsigned int h = FreeImage_GetHeight(rgbf);
+   const unsigned int pitch = FreeImage_GetPitch(rgbf);
+   const uint8_t* const bits = static_cast<const uint8_t*>(FreeImage_GetBits(rgbf));
+
+   // Scan range so HDR values that fit FP16 land in the cheaper format.
+   // Mirrors the policy from the old CreateFromFreeImage path.
+   float minval = FLT_MAX, maxval = -FLT_MAX;
+   for (unsigned int y = 0; y < h; ++y)
+   {
+      const float* const row = reinterpret_cast<const float*>(bits + static_cast<size_t>(y) * pitch);
+      for (size_t i = 0; i < static_cast<size_t>(w) * 3; ++i)
+      {
+         if (row[i] < minval) minval = row[i];
+         if (row[i] > maxval) maxval = row[i];
+      }
+   }
+   const bool fitFp16 = (maxval <= 65504.f && minval >= -65504.f);
+   const bool signedHalf = minval < 0.f;
+   const BaseTexture::Format fmt = fitFp16 ? BaseTexture::RGB_FP16 : BaseTexture::RGB_FP32;
+
+   auto tex = BaseTexture::Create(w, h, fmt);
+   if (!tex) { FreeImage_Unload(rgbf); return nullptr; }
+
+   if (fmt == BaseTexture::RGB_FP16)
+   {
+      uint16_t* const dst = static_cast<uint16_t*>(tex->data());
+      for (unsigned int y = 0; y < h; ++y)
+      {
+         const float* const srow = reinterpret_cast<const float*>(bits + static_cast<size_t>(y) * pitch);
+         uint16_t* const drow = dst + static_cast<size_t>(h - 1 - y) * w * 3;
+         if (signedHalf)
+            float2half_noF16MaxInfNaN(drow, srow, static_cast<size_t>(w) * 3);
+         else
+            float2half_pos_noF16MaxInfNaN(drow, srow, static_cast<size_t>(w) * 3);
+      }
+   }
+   else
+   {
+      float* const dst = static_cast<float*>(tex->data());
+      for (unsigned int y = 0; y < h; ++y)
+      {
+         const float* const srow = reinterpret_cast<const float*>(bits + static_cast<size_t>(y) * pitch);
+         float* const drow = dst + static_cast<size_t>(h - 1 - y) * w * 3;
+         memcpy(drow, srow, static_cast<size_t>(w) * 3 * sizeof(float));
+      }
+   }
+   tex->SetIsOpaque(true);
+   tex->m_realWidth = w;
+   tex->m_realHeight = h;
+
+   FreeImage_Unload(rgbf);
+   return tex;
+}
+
 std::shared_ptr<BaseTexture> BaseTexture::CreateFromData(const void* data, const size_t size, const bool isImageData, unsigned int maxTexDimension, bool resizeOnLowMem) noexcept
 {
    std::shared_ptr<BaseTexture> tex;
@@ -137,274 +220,55 @@ std::shared_ptr<BaseTexture> BaseTexture::CreateFromData(const void* data, const
 
    if (tex == nullptr)
    {
-      FIMEMORY * const dataHandle = FreeImage_OpenMemory((BYTE*)data, (DWORD)size);
-      if (!dataHandle)
-         return nullptr;
-      // Check the file signature and deduce its format then check that the plugin has reading capabilities
-      const FREE_IMAGE_FORMAT fif = FreeImage_GetFileTypeFromMemory(dataHandle, (int)size);
-      if ((fif == FIF_UNKNOWN) || !FreeImage_FIFSupportsReading(fif))
-      {
-         FreeImage_CloseMemory(dataHandle);
-         return nullptr;
-      }
-      // Load
-      FIBITMAP * const dib = FreeImage_LoadFromMemory(fif, dataHandle, 0);
-      FreeImage_CloseMemory(dataHandle);
-      tex = dib ? BaseTexture::CreateFromFreeImage(dib, isImageData, maxTexDimension, resizeOnLowMem) : nullptr;
-   }
-   
-   #ifdef __OPENGLES__
-   if (tex && (tex->m_format == SRGB || tex->m_format == RGB_FP16 || tex->m_format == RGB_FP32))
-      tex = tex->NewWithAlpha();
-   #endif
-   
-   return tex;
-}
-
-std::shared_ptr<BaseTexture> BaseTexture::CreateFromFreeImage(FIBITMAP* dib, const bool isImageData, unsigned int maxTexDim, bool resizeOnLowMem) noexcept
-{
-   // check if Textures exceed the maximum texture dimension
-   if (maxTexDim <= 0)
-      maxTexDim = 65536;
-   const unsigned int initMaxTexDim = maxTexDim;
-
-   const unsigned int pictureWidth  = FreeImage_GetWidth(dib);
-   const unsigned int pictureHeight = FreeImage_GetHeight(dib);
-
-   FIBITMAP* dibResized = dib;
-   FIBITMAP* dibConv = dib;
-   std::shared_ptr<BaseTexture> tex;
-
-   // do loading in a loop, in case memory runs out and we need to scale the texture down due to this
-   bool success = false;
-   bool needsSignedHalf2Float = false;
-   while (!success)
-   {
-      // the mem is so low that the texture won't even be able to be rescaled -> return
-      if (maxTexDim <= 0)
-      {
-         FreeImage_Unload(dib);
-         return nullptr;
-      }
-
-      if ((pictureHeight > maxTexDim) || (pictureWidth > maxTexDim))
-      {
-         unsigned int newWidth  = max(min(pictureWidth,  maxTexDim), MIN_TEXTURE_SIZE);
-         unsigned int newHeight = max(min(pictureHeight, maxTexDim), MIN_TEXTURE_SIZE);
-         /*
-          * The following code tries to maintain the aspect ratio while resizing.
-          */
-         if (pictureWidth - newWidth > pictureHeight - newHeight)
-             newHeight = min(pictureHeight * newWidth / pictureWidth,  maxTexDim);
-         else
-             newWidth  = min(pictureWidth * newHeight / pictureHeight, maxTexDim);
-         dibResized = FreeImage_Rescale(dib, newWidth, newHeight, FILTER_BILINEAR); //!! use a better filter in case scale ratio is pretty high?
-      }
-      else if (pictureWidth < MIN_TEXTURE_SIZE || pictureHeight < MIN_TEXTURE_SIZE)
-      {
-         // some drivers seem to choke on small (1x1) textures, so be safe by scaling them up
-         const unsigned int newWidth  = max(pictureWidth,  MIN_TEXTURE_SIZE);
-         const unsigned int newHeight = max(pictureHeight, MIN_TEXTURE_SIZE);
-         dibResized = FreeImage_Rescale(dib, newWidth, newHeight, FILTER_BOX);
-      }
-
-      // failed to get mem?
-      if (dibResized == nullptr)
-      {
-         if (!resizeOnLowMem)
-         {
-            FreeImage_Unload(dib);
-            return nullptr;
-         }
-
-         maxTexDim /= 2;
-         while ((maxTexDim > pictureHeight) && (maxTexDim > pictureWidth))
-            maxTexDim /= 2;
-
-         continue;
-      }
-
-      const FREE_IMAGE_TYPE img_type = FreeImage_GetImageType(dibResized);
-      const bool rgbf16 = (img_type == FIT_RGB16F) || (img_type == FIT_RGBA16F);
-      const bool rgbf = (img_type == FIT_FLOAT) || (img_type == FIT_DOUBLE) || (img_type == FIT_RGBF) || (img_type == FIT_RGBAF); //(FreeImage_GetBPP(dibResized) > 32); //!! do handle/convert RGBAF better?
-      const bool has_alpha = !rgbf && FreeImage_IsTransparent(dibResized);
-      // already in correct format (24bits RGB, 32bits RGBA, 96bits RGBF) ?
-      // Note that 8bits BW image are converted to 24bits RGB since they are in sRGB color space and there is no sGREY8 GPU format
-      if(((img_type == FIT_BITMAP) && (FreeImage_GetBPP(dibResized) == (has_alpha ? 32 : 24))) || (img_type == FIT_RGBF) || rgbf16)
-         dibConv = dibResized;
-      else
-      {
-         dibConv = rgbf ? FreeImage_ConvertToRGBF(dibResized) : has_alpha ? FreeImage_ConvertTo32Bits(dibResized) : FreeImage_ConvertTo24Bits(dibResized);
-         if (dibResized != dib) // did we allocate a rescaled copy?
-            FreeImage_Unload(dibResized);
-
-         // failed to get mem?
-         if (dibConv == nullptr)
-         {
-            if (!resizeOnLowMem)
-            {
-               FreeImage_Unload(dib);
-               return nullptr;
-            }
-
-            maxTexDim /= 2;
-            while ((maxTexDim > pictureHeight) && (maxTexDim > pictureWidth))
-               maxTexDim /= 2;
-
-            continue;
-         }
-      }
+      // ImageIO handles every format the previous FreeImage path did
+      // (PNG, JPEG, WebP, BMP, TIFF, GIF, EXR, Radiance .hdr, ...) plus
+      // HEIC/AVIF/JPEG-XL. Pixel-layout equivalence with the old
+      // FreeImage output is verified by tools/imageio_harness/.
+      // TODO(phase2-followup): maxTexDimension / resizeOnLowMem are
+      // currently ignored — the resize-on-low-mem retry loop and the
+      // user-settable max-texture cap from the FreeImage path have
+      // not been ported. Decoded resolution is whatever ImageIO
+      // returns. None of our bundled assets need a cap; if a user
+      // ball/decal image trips this, we re-introduce CGContext-based
+      // downscale here.
+      vpx_imageio_image_t img;
+      if (!vpx_imageio_decode(data, size, &img))
+         return isExrHeader(data, size) ? CreateFromExrViaFreeImage(data, size) : nullptr;
 
       Format format;
-      const unsigned int tex_w = FreeImage_GetWidth(dibConv);
-      const unsigned int tex_h = FreeImage_GetHeight(dibConv);
-      if (rgbf16)
+      size_t bytesPerPixel = 0;
+      switch (img.format) {
+      case VPX_IMAGEIO_FMT_RGB8:
+         format = isImageData ? SRGB : RGB;
+         bytesPerPixel = 3;
+         break;
+      case VPX_IMAGEIO_FMT_RGBA8:
+         format = isImageData ? SRGBA : RGBA;
+         bytesPerPixel = 4;
+         break;
+      case VPX_IMAGEIO_FMT_RGB_FP16:
+         format = RGB_FP16;
+         bytesPerPixel = 2 * 3;
+         break;
+      case VPX_IMAGEIO_FMT_RGB_FP32:
+         format = RGB_FP32;
+         bytesPerPixel = 4 * 3;
+         break;
+      default:
+         vpx_imageio_free(&img);
+         return nullptr;
+      }
+
+      tex = BaseTexture::Create(img.width, img.height, format);
+      if (tex)
       {
-         format = (img_type == FIT_RGB16F) ? RGB_FP16 : RGBA_FP16;
-         needsSignedHalf2Float = true; // As we did not evaluate file content
+         memcpy(tex->data(), img.pixels,
+                static_cast<size_t>(img.width) * img.height * bytesPerPixel);
+         tex->m_realWidth = img.width;
+         tex->m_realHeight = img.height;
       }
-      else if (rgbf)
-      {
-         float minval = FLT_MAX;
-         float maxval = -FLT_MAX;
-         const uint8_t* __restrict bits = (uint8_t*)FreeImage_GetBits(dibConv);
-         const unsigned int pitch = FreeImage_GetPitch(dibConv);
-         for (unsigned int y = 0; y < tex_h; ++y)
-         {
-            const Vertex2D minmax = min_max((const float*)bits, tex_w * 3);
-            minval = min(minval, minmax.x);
-            maxval = max(maxval, minmax.y);
-
-            bits += pitch;
-         }
-         format = (maxval <= 65504.f && minval >= -65504.f) ? RGB_FP16 : RGB_FP32;
-         needsSignedHalf2Float = minval < 0.f;
-      }
-      else
-      {
-         format = isImageData ? (has_alpha ? SRGBA : SRGB) : (has_alpha ? RGBA : RGB);
-      }
-
-      tex = BaseTexture::Create(tex_w, tex_h, format);
-      success = tex != nullptr;
-      if (!success)
-      { // failed to get mem?
-         if (dibConv != dibResized) // did we allocate a copy from conversion?
-            FreeImage_Unload(dibConv);
-         else if (dibResized != dib) // did we allocate a rescaled copy?
-            FreeImage_Unload(dibResized);
-
-         if (!resizeOnLowMem)
-         {
-            FreeImage_Unload(dib);
-            return nullptr;
-         }
-
-         maxTexDim /= 2;
-         while ((maxTexDim > pictureHeight) && (maxTexDim > pictureWidth))
-            maxTexDim /= 2;
-
-         continue;
-      }
+      vpx_imageio_free(&img);
    }
-
-   assert(tex->data());
-   tex->m_resizedOnLowMem = maxTexDim != initMaxTexDim;
-   tex->m_realWidth = pictureWidth;
-   tex->m_realHeight = pictureHeight;
-
-   // Copy, applying channel and data format conversion, as well as flipping upside down
-   // Note that free image uses RGB for float image, and the FI_RGBA_xxx for others
-   if (tex->m_format == RGB_FP16 || tex->m_format == RGBA_FP16)
-   {
-      const FREE_IMAGE_TYPE img_type = FreeImage_GetImageType(dibConv);
-      const uint8_t* __restrict bits = (uint8_t*)FreeImage_GetBits(dibConv);
-      const unsigned pitch = FreeImage_GetPitch(dibConv);
-      const unsigned components = tex->m_format == RGB_FP16 ? 3 : 4;
-      uint16_t* const __restrict pdst = (uint16_t*)tex->data();
-      for (unsigned int y = 0; y < tex->m_height; ++y)
-      {
-         const size_t offs = (size_t)(tex->m_height - y - 1) * (tex->m_width*components);
-         if (img_type == FIT_RGB16F || img_type == FIT_RGBA16F)
-            memcpy(pdst+offs, bits, tex->m_width*components*sizeof(uint16_t));
-         // we already did a range check above, so use faster float2half code variants
-         else if (needsSignedHalf2Float)
-            float2half_noF16MaxInfNaN(pdst+offs, (const float*)bits, tex->m_width*components);
-         else
-            float2half_pos_noF16MaxInfNaN(pdst+offs, (const float*)bits, tex->m_width*components);
-         bits += pitch;
-      }
-      tex->SetIsOpaque(true);
-   }
-   else if (tex->m_format == RGB_FP32)
-   {
-      const uint8_t* __restrict bits = (uint8_t*)FreeImage_GetBits(dibConv);
-      const unsigned pitch = FreeImage_GetPitch(dibConv);
-      float* const __restrict pdst = (float*)tex->data();
-      for (unsigned int y = 0; y < tex->m_height; ++y)
-      {
-         const size_t offs = (size_t)(tex->m_height - y - 1) * (tex->m_width*3);
-         memcpy(pdst+offs, bits, tex->m_width*3*sizeof(float));
-         bits += pitch;
-      }
-      tex->SetIsOpaque(true);
-   }
-   else if (tex->m_format == BW)
-   {
-      const uint8_t* __restrict bits = (uint8_t*)FreeImage_GetBits(dibConv);
-      const unsigned pitch = FreeImage_GetPitch(dibConv);
-      uint8_t* const __restrict pdst = static_cast<uint8_t*>(tex->data());
-      for (unsigned int y = 0; y < tex->m_height; ++y)
-      {
-         const size_t offs = (size_t)(tex->m_height - y - 1) * tex->m_width;
-         memcpy(pdst+offs, bits, tex->m_width);
-         bits += pitch;
-      }
-      tex->SetIsOpaque(true);
-   }
-   else
-   {
-      const uint8_t* __restrict bits = (uint8_t*)FreeImage_GetBits(dibConv);
-      const unsigned pitch = FreeImage_GetPitch(dibConv);
-      uint8_t* const __restrict pdst = static_cast<uint8_t*>(tex->data());
-      const bool has_alpha = tex->HasAlpha();
-      const unsigned int stride = has_alpha ? 4 : 3;
-      #if (!((FI_RGBA_RED == 2) && (FI_RGBA_GREEN == 1) && (FI_RGBA_BLUE == 0) && (FI_RGBA_ALPHA == 3)))
-         bool opaque = true;
-      #endif
-      for (unsigned int y = 0; y < tex->m_height; ++y)
-      {
-         const uint8_t* __restrict pixel = bits;
-         const size_t offs = (size_t)(tex->m_height - y - 1) * (tex->width()*stride);
-         #if (FI_RGBA_RED == 2) && (FI_RGBA_GREEN == 1) && (FI_RGBA_BLUE == 0) && (FI_RGBA_ALPHA == 3)
-            if (has_alpha)
-               copy_bgra_rgba<false>((unsigned int*)(pdst+offs),(const unsigned int*)pixel,tex->width());
-            else
-               copy_bgr_rgb(pdst+offs,pixel,tex->width());
-         #else
-            if (!has_alpha)
-               memcpy(pdst+offs, pixel, tex->width()*3);
-            else
-            for (size_t o = offs; o < tex->width()*4+offs; o+=4,pixel+=4)
-            {
-               const unsigned int p = *(unsigned int*)pixel;
-               *(unsigned int*)(pdst+o) = p;
-               if ((p&0xFF000000u) != 0xFF000000u)
-                  opaque = false;
-            }
-         #endif
-         bits += pitch;
-      }
-      #if (!((FI_RGBA_RED == 2) && (FI_RGBA_GREEN == 1) && (FI_RGBA_BLUE == 0) && (FI_RGBA_ALPHA == 3)))
-         tex->SetIsOpaque(opaque);
-      #endif
-   }
-
-   if (dibConv != dibResized) // did we allocate a copy from conversion?
-      FreeImage_Unload(dibConv);
-   else if (dibResized != dib) // did we allocate a rescaled copy?
-      FreeImage_Unload(dibResized);
-   FreeImage_Unload(dib);
 
    return tex;
 }

@@ -117,7 +117,6 @@ public:
 
 private:
    BaseTexture(const unsigned int w, const unsigned int h, const Format format);
-   static std::shared_ptr<BaseTexture> CreateFromFreeImage(struct FIBITMAP *dib, const bool isImageData, unsigned int maxTexDimension, bool resizeOnLowMem) noexcept; // also free's/delete's the dib inside!
 
    void UpdateMD5() const;
    void UpdateOpaque() const;

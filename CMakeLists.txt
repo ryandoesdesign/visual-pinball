@@ -57,6 +57,8 @@ add_executable(vpinball
 
    standalone/macos/CBridge.h
    standalone/macos/CBridge.mm
+   standalone/macos/ImageIOBridge.h
+   standalone/macos/ImageIOBridge.mm
    standalone/macos/VPXApp.swift
    standalone/macos/VPXLauncher.swift
    standalone/macos/MetalViewHost.swift
