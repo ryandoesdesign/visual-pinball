@@ -7,9 +7,11 @@
 
 #include "core/player.h"
 #include "core/extern.h"   // g_pplayer
+#include "parts/pintable.h"
 #include "renderer/Window.h"
 #include "renderer/RenderDevice.h"
 #include "renderer/Renderer.h"
+#include "renderer/ViewSetup.h"
 
 #include "standalone/macos/SettingsBridge.h"
 
@@ -175,4 +177,104 @@ extern "C" void vpx_settings_set_window_arlock(vpx_window_id_t id, int arlock)
 {
    if (id < 0 || id >= static_cast<int>(std::size(s_arLock))) return;
    s_arLock[id] = arlock;
+}
+
+
+// ---- View / camera --------------------------------------------------
+
+static float* view_field(ViewSetup& vs, vpx_view_property_t prop)
+{
+   switch (prop)
+   {
+   case VPX_VIEW_FOV:      return &vs.mFOV;
+   case VPX_VIEW_LOOK_AT:  return &vs.mLookAt;
+   case VPX_VIEW_LAYBACK:  return &vs.mLayback;
+   case VPX_VIEW_SCALE_X:  return &vs.mSceneScaleX;
+   case VPX_VIEW_SCALE_Y:  return &vs.mSceneScaleY;
+   case VPX_VIEW_SCALE_Z:  return &vs.mSceneScaleZ;
+   case VPX_VIEW_HOFS:     return &vs.mViewHOfs;
+   case VPX_VIEW_VOFS:     return &vs.mViewVOfs;
+   case VPX_VIEW_ROTATION: return &vs.mViewportRotation;
+   }
+   return nullptr;
+}
+
+extern "C" float vpx_view_get(vpx_view_property_t prop)
+{
+   if (!g_pplayer || !g_pplayer->m_ptable) return 0.f;
+   const float* f = view_field(g_pplayer->m_ptable->GetViewSetup(), prop);
+   return f ? *f : 0.f;
+}
+
+extern "C" void vpx_view_set(vpx_view_property_t prop, float value)
+{
+   if (!g_pplayer || !g_pplayer->m_ptable || !g_pplayer->m_renderer
+    || !g_pplayer->m_renderer->m_renderDevice)
+      return;
+   // ViewSetup mutation + DisableStaticPrePass + InitLayout are all
+   // render-thread work — no NSWindow APIs involved, so AddEndOfFrameCmd
+   // is the right queue (unlike the window-position/size setters).
+   g_pplayer->m_renderer->m_renderDevice->AddEndOfFrameCmd([prop, value]() {
+      if (!g_pplayer || !g_pplayer->m_ptable || !g_pplayer->m_renderer)
+         return;
+      float* f = view_field(g_pplayer->m_ptable->GetViewSetup(), prop);
+      if (!f) return;
+      *f = value;
+      g_pplayer->m_renderer->DisableStaticPrePass(true);
+      g_pplayer->m_renderer->InitLayout();
+   });
+}
+
+
+// --- Default preset (applied during table load) ----------------------
+
+namespace {
+struct DefaultPreset
+{
+   bool  enabled = false;
+   float fov = 45;
+   float lookAt = 25;
+   float layback = 0;
+   float scaleX = 1;
+   float scaleY = 1;
+   float scaleZ = 1;
+   float hOfs = 0;
+   float vOfs = 0;
+   float rotation = 0;
+};
+DefaultPreset s_defaultPreset;
+}
+
+extern "C" void vpx_view_set_default_preset(int enabled,
+                                            float fov, float lookAt, float layback,
+                                            float scaleX, float scaleY, float scaleZ,
+                                            float hOfs, float vOfs, float rotation)
+{
+   s_defaultPreset = DefaultPreset {
+      enabled != 0, fov, lookAt, layback, scaleX, scaleY, scaleZ, hOfs, vOfs, rotation
+   };
+}
+
+extern "C" void vpx_view_internal_apply_default_preset_on_load(void)
+{
+   if (!s_defaultPreset.enabled) return;
+   if (!g_pplayer || !g_pplayer->m_ptable) return;
+   // Apply to all three view modes so switching mode mid-game keeps
+   // the preset consistent. The active mode's ViewSetup is what the
+   // renderer reads via GetViewSetup() during InitLayout — that runs
+   // later in Player::Player, so our writes here land before the
+   // first frame.
+   for (int i = 0; i < 3; ++i)
+   {
+      ViewSetup& vs = g_pplayer->m_ptable->mViewSetups[i];
+      vs.mFOV              = s_defaultPreset.fov;
+      vs.mLookAt           = s_defaultPreset.lookAt;
+      vs.mLayback          = s_defaultPreset.layback;
+      vs.mSceneScaleX      = s_defaultPreset.scaleX;
+      vs.mSceneScaleY      = s_defaultPreset.scaleY;
+      vs.mSceneScaleZ      = s_defaultPreset.scaleZ;
+      vs.mViewHOfs         = s_defaultPreset.hOfs;
+      vs.mViewVOfs         = s_defaultPreset.vOfs;
+      vs.mViewportRotation = s_defaultPreset.rotation;
+   }
 }

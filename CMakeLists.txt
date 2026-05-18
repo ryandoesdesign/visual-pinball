@@ -67,6 +67,7 @@ add_executable(vpinball
    standalone/macos/InputForwarder.swift
    standalone/macos/SettingsRoot.swift
    standalone/macos/DisplaySettingsView.swift
+   standalone/macos/ViewSettingsView.swift
 
    third-party/include/imgui/imgui_impl_sdl3.cpp
    third-party/include/imgui/imgui_impl_sdl3.h

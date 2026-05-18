@@ -26,14 +26,6 @@ struct VPXApp: App {
     @StateObject private var pickerState = PickerState()
 
     var body: some Scene {
-        // Cmd+, opens this scene automatically — SwiftUI wires the
-        // standard "<app> ▸ Settings…" menu item to it. Lives as a
-        // separate NSWindow from the playfield; game keeps running
-        // behind while it's open.
-        Settings {
-            SettingsRoot()
-        }
-
         WindowGroup("VPinballX") {
             MetalViewHost { layer in
                 // Layer is mounted and has a non-zero drawable size.
@@ -80,6 +72,15 @@ struct VPXApp: App {
                 }
             }
         }
+
+        // Cmd+, opens this scene automatically — SwiftUI wires the
+        // standard "<app> ▸ Settings…" menu item to it. Lives as a
+        // separate NSWindow from the playfield; game keeps running
+        // behind while it's open. Declared AFTER WindowGroup so the
+        // playfield is the primary launch scene.
+        Settings {
+            SettingsRoot()
+        }
     }
 
     /// UTType(filenameExtension:) returns Optional; force-unwrap is OK
@@ -114,6 +115,11 @@ final class VPXAppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidBecomeActive(_ notification: Notification) {
         // Idempotent — safe to call on every activation.
         InputForwarder.install()
+
+        // Register the default view preset with the engine. The
+        // engine applies it during Player construction, so every
+        // table load starts with the preset values. Idempotent.
+        ViewPresetAutoApplier.install()
 
         // When launched from a terminal (running the binary directly
         // rather than via `open`), macOS may not auto-activate the

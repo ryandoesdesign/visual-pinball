@@ -58,6 +58,51 @@ void vpx_settings_set_window_size    (vpx_window_id_t, int w, int h);
 void vpx_settings_set_window_display (vpx_window_id_t, int display_index);
 void vpx_settings_set_window_arlock  (vpx_window_id_t, int arlock);
 
+
+// ---- View / camera (Point Of View) -----------------------------------
+//
+// Properties of the currently-active table's ViewSetup. Mutations apply
+// to whichever view mode is in use (Desktop / FSS / Cabinet) — the
+// engine's ViewSetup struct is shared between modes from the SwiftUI
+// side's perspective. Setters queue a render-thread command that
+// mutates the struct and calls Renderer::DisableStaticPrePass +
+// InitLayout, mirroring the ImGui page's OnPointOfViewChanged.
+
+typedef enum {
+   VPX_VIEW_FOV         = 0,   // degrees
+   VPX_VIEW_LOOK_AT     = 1,   // %
+   VPX_VIEW_LAYBACK     = 2,   // legacy skew angle
+   VPX_VIEW_SCALE_X     = 3,
+   VPX_VIEW_SCALE_Y     = 4,
+   VPX_VIEW_SCALE_Z     = 5,
+   VPX_VIEW_HOFS        = 6,   // horizontal frustum offset
+   VPX_VIEW_VOFS        = 7,   // vertical frustum offset
+   VPX_VIEW_ROTATION    = 8,   // viewport rotation, degrees
+} vpx_view_property_t;
+
+// Returns current value, or 0.0 if no player active.
+float vpx_view_get(vpx_view_property_t);
+
+// Queue a mutation; no-op if no player active.
+void  vpx_view_set(vpx_view_property_t, float value);
+
+// Register a "default preset" that the engine will apply to every
+// view mode of every table it loads, replacing whatever the table
+// stored. Lives in process memory only (not persisted). Call once at
+// app launch with the preset values; the engine then naturally
+// applies them as part of Player construction — no race, no retry.
+// Set enabled=0 to disable (engine falls back to table's saved view).
+void vpx_view_set_default_preset(int enabled,
+                                 float fov, float look_at, float layback,
+                                 float scale_x, float scale_y, float scale_z,
+                                 float h_ofs, float v_ofs, float rotation);
+
+// Called from Player::Player after ApplyTableOverrideSettings has run
+// on each view mode. If a default preset is registered, overwrites
+// the corresponding ViewSetup fields. Otherwise a no-op. Engine code
+// path — not meant for SwiftUI use.
+void vpx_view_internal_apply_default_preset_on_load(void);
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

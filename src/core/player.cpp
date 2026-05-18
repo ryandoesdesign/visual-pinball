@@ -22,6 +22,12 @@
 #include "renderer/typedefs3D.h"
 #include "renderer/VRDevice.h"
 #include "ThreadPool.h"
+
+#if defined(__APPLE__) && !defined(__LIBVPINBALL__)
+#include "standalone/macos/SettingsBridge.h"
+#else
+static inline void vpx_view_internal_apply_default_preset_on_load(void) {}
+#endif
 #include "tinyxml2/tinyxml2.h"
 #include "ui/win/codeview.h"
 #include "ui/win/PinTableWnd.h"
@@ -175,6 +181,13 @@ Player::Player(PinTable *const table, const PlayMode playMode)
    {
       for (int i = 0; i < 3; i++)
          table->mViewSetups[i].ApplyTableOverrideSettings(table->m_settings, (ViewSetupID)i);
+
+      // SwiftUI Settings can register a "default preset" via the
+      // bridge (standalone/macos/SettingsBridge.h). If set, it
+      // overrides whatever the table stored — applied here so the
+      // renderer's later InitLayout reads our values from the start
+      // (no race, no retries). See vpx_view_set_default_preset.
+      vpx_view_internal_apply_default_preset_on_load();
    }
 
    m_logicProfiler.NewFrame(0);

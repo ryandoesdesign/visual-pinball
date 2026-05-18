@@ -21,6 +21,12 @@ struct SettingsRoot: View {
                     Label("Display", systemImage: "display")
                 }
                 .tag(SettingsTab.display)
+
+            ViewSettingsView()
+                .tabItem {
+                    Label("View", systemImage: "camera.viewfinder")
+                }
+                .tag(SettingsTab.view)
         }
         .frame(minWidth: 480, minHeight: 360)
     }
@@ -29,4 +35,5 @@ struct SettingsRoot: View {
 
 private enum SettingsTab: Hashable {
     case display
+    case view
 }
