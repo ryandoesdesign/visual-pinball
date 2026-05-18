@@ -53,9 +53,15 @@ namespace
 @end
 
 
-// One state per active handler. Keyed by the opaque handle so we can
-// look it up from notification blocks without retain cycles.
-static NSMutableDictionary<NSValue*, VPXGamepadState*>* g_states = nil;
+// Active handler state. Only ever one is installed at a time —
+// GCInputHandler is owned by InputManager which is owned by Player,
+// and Player instances are serialised (one table at a time). A single
+// __strong static avoids the NSDictionary lookup that was crashing on
+// teardown with a pointer-auth failure (the dictionary's storage was
+// being torn down by an interleaving destructor before our cleanup
+// hit it). With a single static, install/uninstall is just a pointer
+// assignment.
+static __strong VPXGamepadState* g_state = nil;
 
 
 static NSString* makeSettingId(VPXGamepadState* state, GCController* controller)
@@ -196,18 +202,14 @@ static void unregisterController(VPXGamepadState* state, GCController* controlle
 extern "C" void gc_objc_install(GCInputHandlerRef handler)
 {
    @autoreleasepool {
-      if (g_states == nil)
-         g_states = [NSMutableDictionary dictionary];
-
-      NSValue* key = [NSValue valueWithPointer:handler];
-      if (g_states[key] != nil)
+      if (g_state != nil)
          return; // already installed
 
       VPXGamepadState* state = [VPXGamepadState new];
       state.handler = handler;
       state.deviceIds = [NSMapTable strongToStrongObjectsMapTable];
       state.modelCounters = [NSMutableDictionary dictionary];
-      g_states[key] = state;
+      g_state = state;
 
       NSNotificationCenter* nc = [NSNotificationCenter defaultCenter];
       state.connectObserver = [nc addObserverForName:GCControllerDidConnectNotification
@@ -233,31 +235,31 @@ extern "C" void gc_objc_install(GCInputHandlerRef handler)
 extern "C" void gc_objc_uninstall(GCInputHandlerRef handler)
 {
    // Called from ~GCInputHandler during shutdown. C++ destructors must
-   // not propagate exceptions, and Obj-C runtime errors during teardown
-   // (observer already removed, controller iteration race, NSMapTable
-   // edge cases) become NSExceptions that cross the Obj-C++ boundary
-   // and trigger std::terminate. Swallow + log here so a noisy quit
-   // doesn't abort the process.
+   // not propagate exceptions and shutdown ordering is hostile (other
+   // destructors may have invalidated state we'd like to inspect).
+   // Strategy:
+   //   - capture state into a local strong before touching it
+   //   - nil out the global FIRST so any other teardown path bailing
+   //     into this function sees no work
+   //   - operate on locals; @try swallows NSExceptions; SIGSEGV from
+   //     deeper corruption isn't catchable but we minimise surface area
+   //   - skip the C++ callback for device unregistration — we're
+   //     inside ~InputManager already, so it will tear down devices
+   //     implicitly
    @autoreleasepool {
       @try {
-         if (g_states == nil)
-            return;
-         NSValue* key = [NSValue valueWithPointer:handler];
-         VPXGamepadState* state = g_states[key];
+         VPXGamepadState* state = g_state;
          if (state == nil)
             return;
 
+         id connectObs    = state.connectObserver;
+         id disconnectObs = state.disconnectObserver;
+
+         g_state = nil;
+
          NSNotificationCenter* nc = [NSNotificationCenter defaultCenter];
-         if (state.connectObserver)    [nc removeObserver:state.connectObserver];
-         if (state.disconnectObserver) [nc removeObserver:state.disconnectObserver];
-
-         // Unregister any still-connected controllers so InputManager
-         // doesn't hold stale device records past our lifetime.
-         NSArray<GCController*>* live = [[state.deviceIds keyEnumerator] allObjects];
-         for (GCController* c in live)
-            unregisterController(state, c);
-
-         [g_states removeObjectForKey:key];
+         if (connectObs)    [nc removeObserver:connectObs];
+         if (disconnectObs) [nc removeObserver:disconnectObs];
       } @catch (NSException* ex) {
          NSLog(@"[GCInputHandler] uninstall swallowed exception %@: %@",
                ex.name, ex.reason);
