@@ -33,6 +33,12 @@ struct VPXApp: App {
                 // the args (from CLI or file picker) have also resolved.
                 VPXLauncher.shared.setLayer(layer)
             }
+            .overlay(alignment: .bottom) {
+                // Translucent reminder of the primary key bindings;
+                // appears at table load, fades out after ~6 seconds.
+                ControlsHintView()
+                    .padding(.bottom, 32)
+            }
             .frame(minWidth: 1280, minHeight: 720)
             .fileImporter(
                 isPresented: $pickerState.isShowing,
@@ -72,6 +78,21 @@ struct VPXApp: App {
                 }
             }
         }
+        .commands {
+            // View-menu integration for the controls-hint overlay.
+            // CommandGroup(after: .toolbar) inserts after the system's
+            // Show/Hide Toolbar item in the auto-generated View menu.
+            // Cmd+I matches the macOS "Info" convention; SwiftUI menu
+            // shortcuts intercept the keypress before it reaches the
+            // playfield's input forwarding, so this is the only place
+            // we need to wire it.
+            CommandGroup(after: .toolbar) {
+                Button(hintModel.isVisible ? "Hide Controls Hint" : "Show Controls Hint") {
+                    hintModel.toggle()
+                }
+                .keyboardShortcut("i", modifiers: .command)
+            }
+        }
 
         // Cmd+, opens this scene automatically — SwiftUI wires the
         // standard "<app> ▸ Settings…" menu item to it. Lives as a
@@ -82,6 +103,10 @@ struct VPXApp: App {
             SettingsRoot()
         }
     }
+
+    /// Observed so the View-menu button's title can flip between
+    /// "Show Controls Hint" and "Hide Controls Hint" reactively.
+    @ObservedObject private var hintModel = ControlsHintModel.shared
 
     /// UTType(filenameExtension:) returns Optional; force-unwrap is OK
     /// here because "vpx" is a fixed, known-good extension.
