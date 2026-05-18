@@ -26,6 +26,14 @@ struct VPXApp: App {
     @StateObject private var pickerState = PickerState()
 
     var body: some Scene {
+        // Cmd+, opens this scene automatically — SwiftUI wires the
+        // standard "<app> ▸ Settings…" menu item to it. Lives as a
+        // separate NSWindow from the playfield; game keeps running
+        // behind while it's open.
+        Settings {
+            SettingsRoot()
+        }
+
         WindowGroup("VPinballX") {
             MetalViewHost { layer in
                 // Layer is mounted and has a non-zero drawable size.

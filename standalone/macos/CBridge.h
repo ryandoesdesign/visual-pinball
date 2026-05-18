@@ -12,6 +12,12 @@
 
 #pragma once
 
+// Other Swift-facing bridges are pulled in here so the single
+// -import-objc-header flag (see CMakeLists.txt) makes them all visible
+// to Swift in one shot. SettingsBridge.h has the same C-only constraints
+// as this header.
+#include "SettingsBridge.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
