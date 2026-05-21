@@ -68,6 +68,7 @@ add_executable(vpinball
    standalone/macos/SettingsRoot.swift
    standalone/macos/DisplaySettingsView.swift
    standalone/macos/ViewSettingsView.swift
+   standalone/macos/AudioSettingsView.swift
    standalone/macos/ControlsHintView.swift
 
    third-party/include/imgui/imgui_impl_sdl3.cpp

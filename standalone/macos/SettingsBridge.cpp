@@ -12,6 +12,7 @@
 #include "renderer/RenderDevice.h"
 #include "renderer/Renderer.h"
 #include "renderer/ViewSetup.h"
+#include "audio/AudioPlayer.h"
 
 #include "standalone/macos/SettingsBridge.h"
 
@@ -277,4 +278,185 @@ extern "C" void vpx_view_internal_apply_default_preset_on_load(void)
       vs.mViewVOfs         = s_defaultPreset.vOfs;
       vs.mViewportRotation = s_defaultPreset.rotation;
    }
+}
+
+
+// ---- Audio ----------------------------------------------------------
+
+// UI-only state — the "lock volumes" toggle isn't backed by an engine
+// field. Matches AudioSettingsPage::m_lockVolume (default true).
+static bool s_lockVolumes = true;
+
+// Queue a mutation that touches Player / AudioPlayer state. Uses the
+// render-thread end-of-frame queue (same place the ImGui page's
+// callbacks already run), so AudioPlayer reconstruction and miniaudio
+// volume changes happen in a thread-safe context. Don't use
+// queue_main_thread here — that's for NSWindow APIs.
+static void queue_render_thread(std::function<void()> cmd)
+{
+   if (!g_pplayer || !g_pplayer->m_renderer
+    || !g_pplayer->m_renderer->m_renderDevice)
+      return;
+   g_pplayer->m_renderer->m_renderDevice->AddEndOfFrameCmd(std::move(cmd));
+}
+
+extern "C" int vpx_audio_get_music_volume(void)
+{
+   return g_pplayer ? g_pplayer->m_MusicVolume : 0;
+}
+
+extern "C" int vpx_audio_get_sound_volume(void)
+{
+   return g_pplayer ? g_pplayer->m_SoundVolume : 0;
+}
+
+extern "C" int vpx_audio_get_play_music(void)
+{
+   return (g_pplayer && g_pplayer->m_PlayMusic) ? 1 : 0;
+}
+
+extern "C" int vpx_audio_get_play_sound(void)
+{
+   return (g_pplayer && g_pplayer->m_PlaySound) ? 1 : 0;
+}
+
+extern "C" int vpx_audio_get_lock_volumes(void)
+{
+   return s_lockVolumes ? 1 : 0;
+}
+
+extern "C" int vpx_audio_get_sound3d_mode(void)
+{
+   if (!g_pplayer || !g_pplayer->m_audioPlayer) return 0;
+   return static_cast<int>(g_pplayer->m_audioPlayer->GetSoundMode3D());
+}
+
+extern "C" void vpx_audio_set_music_volume(int v)
+{
+   if (!g_pplayer) return;
+   const int clamped = std::clamp(v, 0, 100);
+   queue_render_thread([clamped]() {
+      if (!g_pplayer) return;
+      g_pplayer->m_MusicVolume = clamped;
+      g_pplayer->UpdateVolume();
+   });
+}
+
+extern "C" void vpx_audio_set_sound_volume(int v)
+{
+   if (!g_pplayer) return;
+   const int clamped = std::clamp(v, 0, 100);
+   queue_render_thread([clamped]() {
+      if (!g_pplayer) return;
+      g_pplayer->m_SoundVolume = clamped;
+      g_pplayer->UpdateVolume();
+   });
+}
+
+extern "C" void vpx_audio_set_play_music(int v)
+{
+   if (!g_pplayer) return;
+   const bool on = v != 0;
+   queue_render_thread([on]() {
+      if (!g_pplayer) return;
+      g_pplayer->m_PlayMusic = on;
+      g_pplayer->UpdateVolume();
+   });
+}
+
+extern "C" void vpx_audio_set_play_sound(int v)
+{
+   if (!g_pplayer) return;
+   const bool on = v != 0;
+   queue_render_thread([on]() {
+      if (!g_pplayer) return;
+      g_pplayer->m_PlaySound = on;
+      g_pplayer->UpdateVolume();
+   });
+}
+
+extern "C" void vpx_audio_set_lock_volumes(int v)
+{
+   s_lockVolumes = v != 0;
+}
+
+extern "C" void vpx_audio_set_sound3d_mode(int mode)
+{
+   if (!g_pplayer || !g_pplayer->m_ptable) return;
+   if (mode < 0 || mode > static_cast<int>(VPX::SNDCFG_SND3DSSF)) return;
+   queue_render_thread([mode]() {
+      if (!g_pplayer || !g_pplayer->m_ptable) return;
+      const auto& s = g_pplayer->m_ptable->m_settings;
+      g_pplayer->m_audioPlayer = std::make_unique<VPX::AudioPlayer>(
+         s.GetPlayer_SoundDeviceBG(),
+         s.GetPlayer_SoundDevice(),
+         static_cast<VPX::SoundConfigTypes>(mode));
+   });
+}
+
+extern "C" int vpx_audio_get_devices(vpx_audio_device_t* buf, int max)
+{
+   if (!buf || max <= 0) return 0;
+   const auto devices = VPX::AudioPlayer::EnumerateAudioDevices();
+   const int n = std::min(static_cast<int>(devices.size()), max);
+   for (int i = 0; i < n; ++i)
+   {
+      buf[i].index = i;
+      buf[i].channels = static_cast<int>(devices[i].channels);
+      std::snprintf(buf[i].name, sizeof(buf[i].name), "%s", devices[i].name.c_str());
+   }
+   return n;
+}
+
+// Resolve a live device-name string to its index in EnumerateAudioDevices().
+// Returns -1 if no match (e.g. a device that was unplugged after the
+// AudioPlayer was constructed).
+static int find_device_index(const string& name)
+{
+   const auto devices = VPX::AudioPlayer::EnumerateAudioDevices();
+   for (size_t i = 0; i < devices.size(); ++i)
+      if (devices[i].name == name) return static_cast<int>(i);
+   return -1;
+}
+
+extern "C" int vpx_audio_get_backglass_device(void)
+{
+   if (!g_pplayer || !g_pplayer->m_audioPlayer) return -1;
+   return find_device_index(g_pplayer->m_audioPlayer->GetBackglassDeviceName());
+}
+
+extern "C" int vpx_audio_get_playfield_device(void)
+{
+   if (!g_pplayer || !g_pplayer->m_audioPlayer) return -1;
+   return find_device_index(g_pplayer->m_audioPlayer->GetPlayfieldDeviceName());
+}
+
+extern "C" void vpx_audio_set_backglass_device(int device_index)
+{
+   if (!g_pplayer || !g_pplayer->m_ptable) return;
+   queue_render_thread([device_index]() {
+      if (!g_pplayer || !g_pplayer->m_ptable) return;
+      const auto devices = VPX::AudioPlayer::EnumerateAudioDevices();
+      if (device_index < 0 || device_index >= static_cast<int>(devices.size())) return;
+      const auto& s = g_pplayer->m_ptable->m_settings;
+      g_pplayer->m_audioPlayer = std::make_unique<VPX::AudioPlayer>(
+         devices[device_index].name,
+         s.GetPlayer_SoundDevice(),
+         static_cast<VPX::SoundConfigTypes>(s.GetPlayer_Sound3D()));
+   });
+}
+
+extern "C" void vpx_audio_set_playfield_device(int device_index)
+{
+   if (!g_pplayer || !g_pplayer->m_ptable) return;
+   queue_render_thread([device_index]() {
+      if (!g_pplayer || !g_pplayer->m_ptable) return;
+      const auto devices = VPX::AudioPlayer::EnumerateAudioDevices();
+      if (device_index < 0 || device_index >= static_cast<int>(devices.size())) return;
+      const auto& s = g_pplayer->m_ptable->m_settings;
+      g_pplayer->m_audioPlayer = std::make_unique<VPX::AudioPlayer>(
+         s.GetPlayer_SoundDeviceBG(),
+         devices[device_index].name,
+         static_cast<VPX::SoundConfigTypes>(s.GetPlayer_Sound3D()));
+   });
 }

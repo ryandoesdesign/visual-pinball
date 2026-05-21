@@ -103,6 +103,64 @@ void vpx_view_set_default_preset(int enabled,
 // path — not meant for SwiftUI use.
 void vpx_view_internal_apply_default_preset_on_load(void);
 
+
+// ---- Audio ----------------------------------------------------------
+//
+// Mirrors src/ui/live/ingameui/AudioSettingsPage.cpp. Volumes are 0..100
+// ints (matching Settings_properties.inl). The "lock volumes" toggle is
+// UI-only state held by the bridge so it survives Settings-window
+// rebuilds — the actual delta-matching is done on the SwiftUI side
+// before each setter call. Mutations touch m_audioPlayer (miniaudio /
+// SDL) and are queued via RenderDevice::AddEndOfFrameCmd, matching how
+// the existing ImGui page already runs its callbacks at frame end.
+
+typedef struct {
+   int  index;            // index in EnumerateAudioDevices() order
+   int  channels;         // 0 if unknown
+   char name[256];        // human-readable device name (NUL-terminated)
+} vpx_audio_device_t;
+
+// 0=2CH, 1=AllRear, 2=FrontIsRear, 3=FrontIsFront, 4=6CH, 5=SSF
+// (mirrors VPX::SoundConfigTypes — stable wire ABI).
+typedef enum {
+   VPX_SOUND3D_2CH           = 0,
+   VPX_SOUND3D_ALLREAR       = 1,
+   VPX_SOUND3D_FRONT_IS_REAR = 2,
+   VPX_SOUND3D_FRONT_IS_FRONT= 3,
+   VPX_SOUND3D_6CH           = 4,
+   VPX_SOUND3D_SSF           = 5,
+} vpx_sound3d_mode_t;
+
+// Volumes are 0..100 (PropInt range). Toggles are 0/1.
+int  vpx_audio_get_music_volume(void);     // backglass
+int  vpx_audio_get_sound_volume(void);     // playfield
+int  vpx_audio_get_play_music(void);
+int  vpx_audio_get_play_sound(void);
+int  vpx_audio_get_lock_volumes(void);     // UI-only, held by the bridge
+int  vpx_audio_get_sound3d_mode(void);     // returns vpx_sound3d_mode_t value
+
+void vpx_audio_set_music_volume(int v);
+void vpx_audio_set_sound_volume(int v);
+void vpx_audio_set_play_music(int v);
+void vpx_audio_set_play_sound(int v);
+void vpx_audio_set_lock_volumes(int v);
+void vpx_audio_set_sound3d_mode(int mode);
+
+// Fill `buf` with up to `max` enumerated audio devices. Returns the
+// count actually written (0 if SDL audio not initialised). Safe to call
+// before a player is active.
+int  vpx_audio_get_devices(vpx_audio_device_t* buf, int max);
+
+// Currently selected device indices into vpx_audio_get_devices(); -1
+// on failure or no player active.
+int  vpx_audio_get_backglass_device(void);
+int  vpx_audio_get_playfield_device(void);
+
+// Setters rebuild the AudioPlayer with the new device. No-op if no
+// player active or index out of range.
+void vpx_audio_set_backglass_device(int device_index);
+void vpx_audio_set_playfield_device(int device_index);
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

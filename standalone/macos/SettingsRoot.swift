@@ -27,6 +27,12 @@ struct SettingsRoot: View {
                     Label("View", systemImage: "camera.viewfinder")
                 }
                 .tag(SettingsTab.view)
+
+            AudioSettingsView()
+                .tabItem {
+                    Label("Audio", systemImage: "speaker.wave.2")
+                }
+                .tag(SettingsTab.audio)
         }
         .frame(minWidth: 480, minHeight: 360)
     }
@@ -36,4 +42,5 @@ struct SettingsRoot: View {
 private enum SettingsTab: Hashable {
     case display
     case view
+    case audio
 }
