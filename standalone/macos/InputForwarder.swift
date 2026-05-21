@@ -85,24 +85,38 @@ enum InputForwarder {
     /// Was the modifier whose scancode is `scancode` just pressed (true)
     /// or just released (false)? Returns nil if we can't tell — e.g.
     /// flagsChanged fired for a modifier we don't care about.
+    ///
+    /// AppKit's `.shift` / `.control` / `.option` / `.command` masks
+    /// don't distinguish left from right — they're set if *either* side
+    /// is down. That breaks the common pinball case of holding one
+    /// flipper (a shift key) and tapping the other: when the first key
+    /// is released, the device-independent mask is still set, so we'd
+    /// push another keyDown and the flipper would appear stuck.
+    /// `modifierFlags.rawValue` *does* carry per-side bits (the
+    /// `NX_DEVICE…KEYMASK` family from `<IOKit/hidsystem/IOLLEvent.h>`).
+    /// Read those directly.
     private static func modifierStateChange(for event: NSEvent, scancode: UInt16) -> Bool? {
-        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let raw = event.modifierFlags.rawValue
+        if let mask = deviceModifierMask(for: scancode) {
+            return (raw & mask) != 0
+        }
+        return nil
+    }
+
+    /// Per-side modifier bits set in `NSEvent.modifierFlags.rawValue`.
+    /// Values from `<IOKit/hidsystem/IOLLEvent.h>` — API-stable since
+    /// 10.0. Returning nil means "we don't care about this scancode".
+    private static func deviceModifierMask(for scancode: UInt16) -> UInt? {
         switch scancode {
-        case SDL_SCANCODE_LSHIFT, SDL_SCANCODE_RSHIFT:
-            // NSEvent.modifierFlags reports the .shift flag for either
-            // shift key. We don't get individual left/right press state
-            // out of modifierFlags alone, but for our purposes the side
-            // is keyCode-derived (we know which key fired the change);
-            // the flag tells us whether SOMETHING shift-ish is down.
-            return flags.contains(.shift)
-        case SDL_SCANCODE_LCTRL, SDL_SCANCODE_RCTRL:
-            return flags.contains(.control)
-        case SDL_SCANCODE_LALT, SDL_SCANCODE_RALT:
-            return flags.contains(.option)
-        case SDL_SCANCODE_LGUI, SDL_SCANCODE_RGUI:
-            return flags.contains(.command)
-        default:
-            return nil
+        case SDL_SCANCODE_LSHIFT: return 0x00000002 // NX_DEVICELSHIFTKEYMASK
+        case SDL_SCANCODE_RSHIFT: return 0x00000004 // NX_DEVICERSHIFTKEYMASK
+        case SDL_SCANCODE_LCTRL:  return 0x00000001 // NX_DEVICELCTLKEYMASK
+        case SDL_SCANCODE_RCTRL:  return 0x00002000 // NX_DEVICERCTLKEYMASK
+        case SDL_SCANCODE_LALT:   return 0x00000020 // NX_DEVICELALTKEYMASK
+        case SDL_SCANCODE_RALT:   return 0x00000040 // NX_DEVICERALTKEYMASK
+        case SDL_SCANCODE_LGUI:   return 0x00000008 // NX_DEVICELCMDKEYMASK
+        case SDL_SCANCODE_RGUI:   return 0x00000010 // NX_DEVICERCMDKEYMASK
+        default: return nil
         }
     }
 
