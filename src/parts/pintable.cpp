@@ -1107,7 +1107,9 @@ HRESULT PinTable::LoadGameFromFilename(const std::filesystem::path &filename, VP
                      {
                         const wstring oldName = part->GetIScriptable()->m_wzName;
                         part->GetIScriptable()->m_wzName = GetUniqueName(part->GetIScriptable()->m_wzName);
-                        PLOGE << "Duplicate part name found: " << MakeString(oldName) << " renamed it to " << MakeString(part->GetIScriptable()->m_wzName);
+                        // The engine auto-resolves the collision, so this
+                        // is informational rather than an error condition.
+                        PLOGI << "Duplicate part name fixed up: " << MakeString(oldName) << " renamed to " << MakeString(part->GetIScriptable()->m_wzName);
                      }
 
                      AddPart(part);
@@ -1644,6 +1646,7 @@ void PinTable::LoadScriptOverride(const std::filesystem::path& scriptPath)
       m_tableEditor->m_pcv->SetScript(m_script_text);
 
    m_external_script_name = scriptPath;
+   PLOGI << "Loaded external script override: " << scriptPath << " (" << buffer.size() << " bytes)";
 }
 
 void PinTable::SetLoadDefaults()

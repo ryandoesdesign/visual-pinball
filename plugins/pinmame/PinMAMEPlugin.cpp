@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <cassert>
 #include <charconv>
+#include <sstream>
 
 #include "Rom.h"
 #include "Roms.h"
@@ -231,7 +232,16 @@ void PINMAMECALLBACK OnLogMessage(PINMAME_LOG_LEVEL logLevel, const char* format
       }
       else if (logLevel == PINMAME_LOG_LEVEL_ERROR)
       {
-         LOGE("PinMAME: " + buffer);
+         // libpinmame's display_rom_load_results() ships a single
+         // multi-line error string. Split so each line shows up as
+         // its own entry in the log window.
+         std::istringstream iss(buffer);
+         string line;
+         while (std::getline(iss, line))
+         {
+            if (!line.empty())
+               LOGE("PinMAME: " + line);
+         }
       }
    }
 }
@@ -314,7 +324,7 @@ int PINMAMECALLBACK OnAudioUpdated(void* p_buffer, int samples, void* const pUse
       // Therefore, we need to copy the data to feed them on the message thread.
       const int bytePerSample = (audioSrc->format == CTLPI_AUDIO_FORMAT_SAMPLE_INT16) ? 2 : 4;
       const int nChannels = (audioSrc->type == CTLPI_AUDIO_SRC_BACKGLASS_MONO) ? 1 : 2;
-      AudioUpdateMsg* pendingAudioUpdate = new AudioUpdateMsg(); 
+      AudioUpdateMsg* pendingAudioUpdate = new AudioUpdateMsg();
       memcpy(pendingAudioUpdate, audioSrc, sizeof(AudioUpdateMsg));
       pendingAudioUpdate->bufferSize = samples * bytePerSample * nChannels;
       pendingAudioUpdate->buffer = new uint8_t[pendingAudioUpdate->bufferSize];

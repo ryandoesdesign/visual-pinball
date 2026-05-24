@@ -195,13 +195,36 @@ void ScriptInterpreter::HandleScriptError(IActiveScriptError *pScriptError, IAct
    LONG nChar;
    pScriptError->GetSourcePosition(&dwCookie, &nLine, &nChar);
 
-   BSTR bstr = nullptr;
-   pScriptError->GetSourceLineText(&bstr);
-   SysFreeString(bstr);
+   BSTR sourceLineBstr = nullptr;
+   pScriptError->GetSourceLineText(&sourceLineBstr);
+   const string sourceLine = sourceLineBstr ? MakeString(sourceLineBstr) : string();
+   SysFreeString(sourceLineBstr);
 
    EXCEPINFO exception = {};
    pScriptError->GetExceptionInfo(&exception);
-   const string description = exception.bstrDescription ? MakeString(exception.bstrDescription) : "Description unavailable"s;
+   // Fall back through richer to poorer sources when bstrDescription
+   // is empty — under our libwinevbs shim it often is, but scode /
+   // source / source-line text are still useful for diagnosis.
+   string description;
+   if (exception.bstrDescription)
+      description = MakeString(exception.bstrDescription);
+   string source = exception.bstrSource ? MakeString(exception.bstrSource) : string();
+   if (description.empty())
+   {
+      if (!source.empty())
+         description = source;
+      const SCODE scode = exception.scode ? exception.scode : static_cast<SCODE>(exception.wCode);
+      if (scode)
+      {
+         char codeBuf[24];
+         std::snprintf(codeBuf, sizeof(codeBuf), " (0x%08x)", static_cast<unsigned int>(scode));
+         description += codeBuf;
+      }
+      if (description.empty())
+         description = "Description unavailable"s;
+   }
+   if (!sourceLine.empty())
+      description += " | source: "s + sourceLine;
    SysFreeString(exception.bstrDescription);
    SysFreeString(exception.bstrSource);
    SysFreeString(exception.bstrHelpFile);
