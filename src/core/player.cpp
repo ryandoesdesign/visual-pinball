@@ -199,6 +199,10 @@ Player::Player(PinTable *const table, const PlayMode playMode)
 
    m_progressDialog.SetProgress("Creating Player..."s, 1);
 
+   // Fresh table → fresh "have we heard audio yet?" counter for the
+   // SwiftUI warmup overlay. (Declaration above OnAudioUpdated.)
+   vpx_loading_audio_reset();
+
 #if !(defined(_M_IX86) || defined(_M_X64) || defined(_M_AMD64) || defined(__i386__) || defined(__i386) || defined(__i486__) || defined(__i486) || defined(i386) || defined(__ia64__) || defined(__x86_64__))
    constexpr int denormalBitMask = 1 << 24;
    int status_word;
@@ -2232,10 +2236,21 @@ void Player::UpdateVolume()
    m_audioPlayer->SetMainVolume(m_PlayMusic ? dequantizeSignedPercent(m_MusicVolume) : 0.f, m_PlaySound ? dequantizeSignedPercent(m_SoundVolume) : 0.f);
 }
 
+// macOS shell: bumped each time an audio buffer arrives, so the
+// SwiftUI "Warming up emulator…" overlay can hide as soon as any
+// plugin (PinMAME, AltSound, etc.) starts producing sound. Reset by
+// the Player constructor at the start of each table load.
+extern "C" void vpx_loading_audio_arrived(void);
+extern "C" void vpx_loading_audio_reset(void);
+
 void Player::OnAudioUpdated(const unsigned int msgId, void* userData, void* msgData)
 {
    Player *me = static_cast<Player *>(userData);
    AudioUpdateMsg &msg = *static_cast<AudioUpdateMsg *>(msgData);
+   // Buffer-with-data is the canonical "audio actually flowing" signal.
+   // Empty buffers are stream-shutdown markers and don't count.
+   if (msg.buffer != nullptr && msg.bufferSize != 0)
+      vpx_loading_audio_arrived();
 
    if (me->m_activeAudioSourceId == 0)
       me->UpdateActiveAudioSource();

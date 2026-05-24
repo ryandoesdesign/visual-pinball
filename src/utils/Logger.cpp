@@ -5,6 +5,7 @@
 
 #include <sstream>
 #include <iomanip>
+#include <fstream>
 
 #include <plog/Init.h>
 #include <plog/Formatters/TxtFormatter.h>
@@ -162,6 +163,15 @@ void Logger::SetupLogger(const bool enable)
       {
          initialized = true;
          const std::filesystem::path logPath = g_app->m_fileLocator.GetAppPath(FileLocator::AppSubFolder::Preferences, "vpinball.log");
+
+         // Truncate the log on launch so each run starts with an empty
+         // file. Without this the rolling appender keeps appending, and
+         // it's hard to tell which entries belong to the current
+         // session — particularly painful in the Log window. Opening
+         // with std::ios::trunc shortens the file to zero bytes; plog
+         // then opens it for append immediately after.
+         { std::ofstream truncator(logPath, std::ios::trunc); }
+
 #if PLOG_CHAR_IS_UTF8
          static plog::RollingFileAppender<ThreadAwareTxtFormatter<false>> fileAppender(logPath.string().c_str(), 1024 * 1024 * 5, 1);
 #else

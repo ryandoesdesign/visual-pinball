@@ -25,6 +25,10 @@ struct VPXApp: App {
     // changes to its @Published properties triggering view updates.
     @StateObject private var pickerState = PickerState()
 
+    /// Provided by SwiftUI; lets the View-menu button raise the log
+    /// window scene programmatically without holding a reference to it.
+    @Environment(\.openWindow) private var openWindow
+
     var body: some Scene {
         WindowGroup("VPinballX") {
             MetalViewHost { layer in
@@ -32,6 +36,12 @@ struct VPXApp: App {
                 // Hand it to the launcher; it'll trigger vpx_run once
                 // the args (from CLI or file picker) have also resolved.
                 VPXLauncher.shared.setLayer(layer)
+            }
+            .overlay {
+                // Splash + per-step loading progress; hides itself
+                // when the engine reports 100 % and the playfield is
+                // ready to draw.
+                LoadingOverlayView()
             }
             .overlay(alignment: .bottom) {
                 // Translucent reminder of the primary key bindings;
@@ -48,6 +58,11 @@ struct VPXApp: App {
                 switch result {
                 case .success(let urls):
                     if let url = urls.first {
+                        // Replace "Opening…" with the table name so
+                        // the user knows their pick was accepted while
+                        // the engine warms up.
+                        let name = url.deletingPathExtension().lastPathComponent
+                        LoadingModel.shared.begin("Loading \(name)…")
                         VPXLauncher.shared.setArgs([
                             CommandLine.arguments[0],
                             "-play",
@@ -67,6 +82,7 @@ struct VPXApp: App {
                 // First appearance of the window. Decide whether to
                 // show the picker (no CLI args) or launch straight
                 // away (table path was supplied).
+                LoadingModel.shared.begin("Opening VPinballX…")
                 if CommandLine.argc == 1 {
                     pickerState.isShowing = true
                 } else {
@@ -74,23 +90,41 @@ struct VPXApp: App {
                         guard let p = CommandLine.unsafeArgv[i] else { return nil }
                         return String(cString: p)
                     }
+                    // Use the path arg (last one is usually the table)
+                    // for a friendlier label.
+                    if let path = args.last, path.lowercased().hasSuffix(".vpx") {
+                        let name = (path as NSString).lastPathComponent
+                            .replacingOccurrences(of: ".vpx", with: "",
+                                                  options: [.caseInsensitive, .anchored, .backwards])
+                        LoadingModel.shared.begin("Loading \(name)…")
+                    }
                     VPXLauncher.shared.setArgs(args)
                 }
             }
         }
         .commands {
-            // View-menu integration for the controls-hint overlay.
-            // CommandGroup(after: .toolbar) inserts after the system's
-            // Show/Hide Toolbar item in the auto-generated View menu.
-            // Cmd+I matches the macOS "Info" convention; SwiftUI menu
-            // shortcuts intercept the keypress before it reaches the
-            // playfield's input forwarding, so this is the only place
-            // we need to wire it.
+            // View-menu integration. CommandGroup(after: .toolbar)
+            // inserts after the system's Show/Hide Toolbar item in the
+            // auto-generated View menu. SwiftUI menu shortcuts intercept
+            // the keypress before it reaches the playfield's input
+            // forwarding, so this is the only place we need to wire it.
             CommandGroup(after: .toolbar) {
                 Button(hintModel.isVisible ? "Hide Controls Hint" : "Show Controls Hint") {
                     hintModel.toggle()
                 }
                 .keyboardShortcut("i", modifiers: .command)
+
+                Button(logModel.isOpen ? "Hide Log" : "Show Log") {
+                    if logModel.isOpen {
+                        // Find and close any open log windows.
+                        for w in NSApp.windows where w.identifier?.rawValue == "log-viewer" {
+                            w.close()
+                        }
+                    } else {
+                        openWindow(id: "log-viewer")
+                    }
+                }
+                .keyboardShortcut("l", modifiers: [.command, .shift])
             }
         }
 
@@ -102,11 +136,21 @@ struct VPXApp: App {
         Settings {
             SettingsRoot()
         }
+
+        // Single-instance log window opened via ⇧⌘L. `Window(id:)` (vs
+        // WindowGroup) keeps it at most one instance and lets the
+        // menu button toggle visibility through openWindow / close.
+        Window("Log", id: "log-viewer") {
+            LogViewerView()
+        }
     }
 
     /// Observed so the View-menu button's title can flip between
     /// "Show Controls Hint" and "Hide Controls Hint" reactively.
     @ObservedObject private var hintModel = ControlsHintModel.shared
+
+    /// Same pattern for the Log window's "Show Log" / "Hide Log" item.
+    @ObservedObject private var logModel = LogViewerModel.shared
 
     /// UTType(filenameExtension:) returns Optional; force-unwrap is OK
     /// here because "vpx" is a fixed, known-good extension.

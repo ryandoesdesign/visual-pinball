@@ -41,6 +41,11 @@ enum ProfilingMode
 ////////////////////////////////////////////////////////////////////////////////
 // Startup progress dialog
 
+// Standalone macOS shell uses these to drive the SwiftUI loading
+// overlay. Declared here so the inline SetProgress below can forward
+// without pulling in standalone/macos/SettingsBridge.h.
+extern "C" void vpx_loading_set(const char* text, int percent);
+
 class ProgressDialog final : public CDialog
 {
 public:
@@ -51,6 +56,9 @@ public:
          PLOGI.printf("%s %d%%", text.c_str(), value);
          m_progress = value;
       }
+      // Always forward — even with value == -1 the text may carry a
+      // useful sub-step label ("Starting Game Scripts...", etc.).
+      vpx_loading_set(text.c_str(), value);
    }
 
 protected:

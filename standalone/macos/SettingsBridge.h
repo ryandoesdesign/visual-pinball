@@ -161,6 +161,57 @@ int  vpx_audio_get_playfield_device(void);
 void vpx_audio_set_backglass_device(int device_index);
 void vpx_audio_set_playfield_device(int device_index);
 
+
+// ---- Diagnostics ----------------------------------------------------
+//
+// Fill `buf` with the absolute path of the engine's rolling log file
+// (same path the plog appender writes to). Returns the number of bytes
+// written excluding the NUL, or 0 if no path is available. The buffer
+// is always NUL-terminated when `buf_size > 0`.
+int vpx_get_log_path(char* buf, int buf_size);
+
+
+// ---- Loading progress -----------------------------------------------
+//
+// One-line description and 0..100 percent for the SwiftUI launch /
+// table-loading overlay. The engine's existing ProgressDialog::SetProgress
+// pushes updates here; the SwiftUI side polls.
+//
+// "active" follows a simple finite state: false → true (Swift sets it
+// when work begins) → false (Swift clears it when work ends). The engine
+// only updates text/percent; it does not toggle active itself, so the
+// SwiftUI overlay can pre-show ("Opening VPinballX…") before vpx_run is
+// even called.
+
+// Replace the current loading text and (optional) percent. Percent < 0
+// leaves the percent unchanged. NULL text leaves the text unchanged.
+void vpx_loading_set(const char* text, int percent);
+
+// True/false toggle for the SwiftUI overlay's visibility.
+void vpx_loading_set_active(int active);
+
+// Snapshot for the SwiftUI poller. Returns 1 if active, 0 otherwise.
+// Fills `text_buf` (NUL-terminated) and stores percent in `*percent`
+// (−1 if no percent has been set). Either pointer may be NULL.
+int vpx_loading_get(char* text_buf, int text_buf_size, int* percent);
+
+// Called from Swift when it switches the overlay text to the warmup
+// label after the engine reports 100 %. Sticky — engine SetProgress
+// becomes a no-op until the overlay ends, so the warmup label isn't
+// clobbered by a late "Starting…" from the engine.
+void vpx_loading_emulator_starting(void);
+
+// "Audio is flowing" tally that the host's audio-update handler bumps
+// every time a buffer arrives from any plugin (PinMAME et al.). The
+// Swift overlay uses this as the universal "emulator is alive" signal:
+// once the counter ticks up past warmup-start, hide the overlay.
+//
+// Reset between tables so a fresh load doesn't inherit the prior
+// table's counter.
+void vpx_loading_audio_arrived(void);
+void vpx_loading_audio_reset(void);
+int  vpx_loading_get_audio_count(void);
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

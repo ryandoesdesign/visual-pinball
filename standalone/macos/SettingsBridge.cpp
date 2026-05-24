@@ -7,6 +7,8 @@
 
 #include "core/player.h"
 #include "core/extern.h"   // g_pplayer
+#include "core/VPApp.h"
+#include "core/FileLocator.h"
 #include "parts/pintable.h"
 #include "renderer/Window.h"
 #include "renderer/RenderDevice.h"
@@ -459,4 +461,99 @@ extern "C" void vpx_audio_set_playfield_device(int device_index)
          devices[device_index].name,
          static_cast<VPX::SoundConfigTypes>(s.GetPlayer_Sound3D()));
    });
+}
+
+extern "C" int vpx_get_log_path(char* buf, int buf_size)
+{
+   if (!buf || buf_size <= 0) return 0;
+   buf[0] = '\0';
+   if (!g_app) return 0;
+   const std::string path = g_app->m_fileLocator
+      .GetAppPath(FileLocator::AppSubFolder::Preferences, "vpinball.log")
+      .string();
+   const int n = std::snprintf(buf, buf_size, "%s", path.c_str());
+   return (n < 0) ? 0 : std::min(n, buf_size - 1);
+}
+
+
+// ---- Loading progress -----------------------------------------------
+//
+// Three small main-thread-only fields. Both writers (ProgressDialog
+// from the engine, the SwiftUI side for app-launch phases) are on the
+// main thread, so no synchronisation is needed.
+
+static char s_loadingText[256] = {0};
+static int  s_loadingPercent = -1;
+static int  s_loadingActive = 0;
+static int  s_emulatorWarming = 0;   // sticky — see vpx_loading_emulator_starting
+
+extern "C" void vpx_loading_set(const char* text, int percent)
+{
+   // The PinMAME warmup overlay outranks engine progress — once the
+   // emulator is booting we don't want the engine's "Starting…" /
+   // "Prerendering 100 %" lines clobbering "Warming up emulator…".
+   if (s_emulatorWarming) return;
+
+   if (text)
+      std::snprintf(s_loadingText, sizeof(s_loadingText), "%s", text);
+   if (percent >= 0)
+      s_loadingPercent = percent;
+}
+
+extern "C" void vpx_loading_set_active(int active)
+{
+   s_loadingActive = active ? 1 : 0;
+   if (!active)
+   {
+      s_loadingText[0] = '\0';
+      s_loadingPercent = -1;
+   }
+}
+
+extern "C" int vpx_loading_get(char* text_buf, int text_buf_size, int* percent)
+{
+   if (text_buf && text_buf_size > 0)
+      std::snprintf(text_buf, text_buf_size, "%s", s_loadingText);
+   if (percent)
+      *percent = s_loadingPercent;
+   return s_loadingActive;
+}
+
+extern "C" void vpx_loading_emulator_starting(void)
+{
+   s_emulatorWarming = 1;
+   std::snprintf(s_loadingText, sizeof(s_loadingText), "%s",
+      "Warming up emulator…");
+   s_loadingPercent = -1;
+   s_loadingActive = 1;
+}
+
+// Audio-arrived tally — see header. Host's Player::OnAudioUpdated
+// calls vpx_loading_audio_arrived() each time a plugin pushes a
+// buffer; the Swift overlay uses the counter as "emulator is alive".
+static int s_audioCount = 0;
+
+extern "C" void vpx_loading_audio_arrived(void)
+{
+   ++s_audioCount;
+   // If we were showing the warmup overlay, drop the sticky flag so
+   // Swift's next tick can see fresh engine state and hide cleanly.
+   if (s_emulatorWarming)
+   {
+      s_emulatorWarming = 0;
+      s_loadingActive = 0;
+      s_loadingText[0] = '\0';
+      s_loadingPercent = -1;
+   }
+}
+
+extern "C" void vpx_loading_audio_reset(void)
+{
+   s_audioCount = 0;
+   s_emulatorWarming = 0;
+}
+
+extern "C" int vpx_loading_get_audio_count(void)
+{
+   return s_audioCount;
 }

@@ -41,53 +41,29 @@ final class ControlsHintModel: ObservableObject {
 
     @Published var isVisible = false
 
-    private var pollTimer: Timer?
     private var hideTimer: Timer?
-    private var wasActive = false
 
     private static let visibleDuration: TimeInterval = 15
 
-    private init() {
-        wasActive = vpx_settings_is_player_active() != 0
-        pollTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
-            self?.tick()
-        }
-        // No NSEvent monitor here: the View-menu item in VPXApp.swift
-        // provides the F2 shortcut. Menu shortcuts intercept before
-        // the playfield gets the event, so we don't need a per-window
-        // monitor.
-    }
+    private init() {}
 
     deinit {
-        pollTimer?.invalidate()
         hideTimer?.invalidate()
     }
 
-    private func tick() {
-        let isActive = vpx_settings_is_player_active() != 0
-        if isActive && !wasActive {
-            // Player just became active — show the hint.
-            showThenAutoHide()
-        }
-        wasActive = isActive
-    }
-
     /// Called from the View-menu command. Public so the menu binding
-    /// can drive it without an environment-object dance.
+    /// can drive it without an environment-object dance. Only entry
+    /// point — the hint no longer auto-shows on table load.
     func toggle() {
         if isVisible {
             hideTimer?.invalidate()
             isVisible = false
         } else {
-            showThenAutoHide()
-        }
-    }
-
-    private func showThenAutoHide() {
-        isVisible = true
-        hideTimer?.invalidate()
-        hideTimer = Timer.scheduledTimer(withTimeInterval: Self.visibleDuration, repeats: false) { [weak self] _ in
-            self?.isVisible = false
+            isVisible = true
+            hideTimer?.invalidate()
+            hideTimer = Timer.scheduledTimer(withTimeInterval: Self.visibleDuration, repeats: false) { [weak self] _ in
+                self?.isVisible = false
+            }
         }
     }
 }

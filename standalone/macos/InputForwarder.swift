@@ -37,6 +37,17 @@ enum InputForwarder {
         installed = true
 
         NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp, .flagsChanged]) { event in
+            // Skip forwarding when a text-editing control owns the
+            // first responder — the Log window's search field, Settings
+            // text fields, etc. need the keystrokes themselves. NSText
+            // is the common base of NSTextView and the field editor
+            // that NSTextField uses while editing, so one check covers
+            // both.
+            if let win = event.window ?? NSApp.keyWindow,
+               win.firstResponder is NSText {
+                return event
+            }
+
             let consumed = forwardKey(event)
             // If we forwarded the key into SDL we should also consume the
             // event so AppKit doesn't dispatch it further. Otherwise the

@@ -70,6 +70,8 @@ add_executable(vpinball
    standalone/macos/ViewSettingsView.swift
    standalone/macos/AudioSettingsView.swift
    standalone/macos/ControlsHintView.swift
+   standalone/macos/LogViewerWindow.swift
+   standalone/macos/LoadingOverlayView.swift
 
    third-party/include/imgui/imgui_impl_sdl3.cpp
    third-party/include/imgui/imgui_impl_sdl3.h
